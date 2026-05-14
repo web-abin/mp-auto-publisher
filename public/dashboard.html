@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<title>公众号自动发文 · 后台</title>
+<link rel="stylesheet" href="/style.css"/>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="title">📰 公众号自动发文</div>
+    <div class="logout" id="logout">退出</div>
+  </div>
+
+  <!-- 状态 -->
+  <div class="page active" data-page="status">
+    <div class="card">
+      <h3>服务器信息 <span class="badge" id="ipBadge">加载中</span></h3>
+      <div class="kv"><span class="k">公网 IP</span><span class="v copy" id="publicIp">--</span></div>
+      <div class="kv"><span class="k">局域网 IP</span><span class="v" id="localIps">--</span></div>
+      <div class="kv"><span class="k">主机名</span><span class="v" id="hostname">--</span></div>
+      <div class="kv"><span class="k">系统/Node</span><span class="v" id="sys">--</span></div>
+      <p class="hint" style="font-size:12px;color:#999;margin:10px 0 0;">提示：将上方公网 IP 配置到「微信公众平台 → 开发 → 基本配置 → IP 白名单」中。</p>
+    </div>
+    <div class="card">
+      <h3>配置状态</h3>
+      <div class="kv"><span class="k">公众号 APPID</span><span class="v" id="cfgAppid">--</span></div>
+      <div class="kv"><span class="k">AI 接口</span><span class="v" id="cfgAi">--</span></div>
+      <div class="kv"><span class="k">图库</span><span class="v" id="cfgImg">--</span></div>
+      <div class="kv"><span class="k">定时任务</span><span class="v" id="cfgJobs">--</span></div>
+    </div>
+  </div>
+
+  <!-- 配置 -->
+  <div class="page" data-page="config">
+    <div class="card">
+      <h3>微信公众号</h3>
+      <div class="form-item"><label>APPID</label><input id="c_appid" placeholder="wx开头的应用 ID"/></div>
+      <div class="form-item"><label>AppSecret</label><input id="c_secret" type="password" placeholder="留空表示不修改"/></div>
+    </div>
+    <div class="card">
+      <h3>AI 文章生成</h3>
+      <div class="form-item"><label>提供商</label>
+        <select id="c_aiProvider">
+          <option value="anthropic">Anthropic Claude</option>
+          <option value="openai">OpenAI / 兼容接口</option>
+        </select>
+      </div>
+      <div class="form-item"><label>API Key</label><input id="c_aiKey" type="password" placeholder="留空表示不修改"/></div>
+      <div class="form-item"><label>模型</label><input id="c_aiModel" placeholder="如 claude-sonnet-4-6 或 gpt-4o"/></div>
+      <div class="form-item"><label>API Base URL（可选，使用代理时填写）</label><input id="c_aiBaseUrl" placeholder="https://api.anthropic.com"/></div>
+    </div>
+    <div class="card">
+      <h3>图库（自动配图）</h3>
+      <div class="form-item"><label>图库</label>
+        <select id="c_imageProvider">
+          <option value="pexels">Pexels（免费）</option>
+          <option value="pixabay">Pixabay（免费）</option>
+          <option value="unsplash">Unsplash</option>
+          <option value="placeholder">占位图（无需 Key）</option>
+        </select>
+      </div>
+      <div class="form-item"><label>图库 API Key</label><input id="c_imageKey" type="password" placeholder="留空表示不修改 / 占位图无需填写"/></div>
+    </div>
+    <button class="btn block" id="saveCfg">保存配置</button>
+  </div>
+
+  <!-- 生成 -->
+  <div class="page" data-page="gen">
+    <div class="card">
+      <h3>关键词 → 一键发文</h3>
+      <div class="form-item">
+        <label>关键词</label>
+        <input id="g_keyword" placeholder="例如：DeepSeek 编程技巧"/>
+        <div id="kwHistoryBox" class="kw-history" style="display:none;">
+          <span class="kw-history-label">最近：</span>
+          <span id="kwHistoryList"></span>
+          <span class="kw-history-clear" id="kwHistoryClear" title="清空记录">×</span>
+        </div>
+      </div>
+      <div class="form-item"><label>补充要求（可选）</label><textarea id="g_extra" placeholder="比如：突出实战、面向小白、加入近期动态等"></textarea></div>
+      <div class="form-item toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="g_webSearch"/>
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">启用联网搜索<span class="hint-inline">（让 AI 引用近期新闻/事实，更贵更慢）</span></span>
+        </label>
+      </div>
+      <div id="trendsBox" style="margin-bottom:14px;display:none;">
+        <div style="font-size:13px;color:#555;margin:6px 0 4px;">已挖掘的相关热搜词（点击可加入关键词）：</div>
+        <div id="trendsList"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn ghost" id="mineBtn" style="flex:1;">挖掘热搜</button>
+        <button class="btn" id="genBtn" style="flex:2;">生成文章</button>
+      </div>
+    </div>
+    <div class="card" id="logCard" style="display:none;">
+      <h3>执行日志</h3>
+      <div class="log" id="taskLog"></div>
+    </div>
+    <div class="card" id="previewCard" style="display:none;">
+      <h3>预览与编辑 <span class="hint-inline">（可直接修改后再推送）</span></h3>
+      <div class="form-item">
+        <label>排版主题</label>
+        <div id="themePicker" class="theme-picker"></div>
+      </div>
+      <div class="form-item">
+        <label>封面图（点击图片可更换 URL）</label>
+        <div class="cover-wrap">
+          <img id="p_coverImg" src="" alt="cover"/>
+          <input id="p_coverUrl" placeholder="封面图片直链 URL"/>
+        </div>
+      </div>
+      <div class="form-item">
+        <label>标题（≤64 字）</label>
+        <input id="p_title" maxlength="64"/>
+      </div>
+      <div class="form-item">
+        <label>摘要（≤120 字）</label>
+        <textarea id="p_digest" maxlength="120"></textarea>
+      </div>
+      <div class="form-item">
+        <label>正文（可直接在下方编辑文字 / 删除段落）</label>
+        <div id="p_body" class="rich-edit" contenteditable="true"></div>
+      </div>
+      <div id="pushResultBox"></div>
+      <button class="btn block" id="pushDraftBtn">推送到微信草稿箱</button>
+    </div>
+  </div>
+
+  <!-- 手写 -->
+  <div class="page" data-page="manual">
+    <div class="card">
+      <h3>手动撰写文章 <span class="hint-inline">（直接输入内容 → 选主题 → 推送草稿）</span></h3>
+      <div class="form-item">
+        <label>标题（≤64 字）</label>
+        <input id="m_title" maxlength="64" placeholder="文章标题"/>
+      </div>
+      <div class="form-item">
+        <label>摘要（≤120 字，可选）</label>
+        <textarea id="m_digest" maxlength="120" placeholder="留空则微信会自动截取正文开头"></textarea>
+      </div>
+      <div class="form-item">
+        <label>封面图 URL（必填）</label>
+        <div class="cover-wrap">
+          <img id="m_coverImg" src="" alt="cover"/>
+          <input id="m_coverUrl" placeholder="封面图片直链 URL，例如 https://..."/>
+        </div>
+      </div>
+      <div class="form-item">
+        <label>排版主题</label>
+        <div id="m_themePicker" class="theme-picker"></div>
+      </div>
+      <div class="form-item">
+        <label>正文
+          <span class="hint-inline">（空行分段；## 小标题；**加粗** *斜体* `代码`；--- 分割线；[IMG: 图片URL] 插图）</span>
+        </label>
+        <textarea id="m_body" class="body-textarea" placeholder="在这里输入文章正文...&#10;&#10;## 小标题&#10;这里是一段正文，可以 **加粗** 或 *斜体*。&#10;&#10;[IMG: https://example.com/pic.jpg]&#10;&#10;---&#10;&#10;下一段内容..."></textarea>
+      </div>
+    </div>
+    <div class="card" id="m_previewCard" style="display:none;">
+      <h3>实时预览 <span class="hint-inline">（可直接在此修改后再推送）</span></h3>
+      <div id="m_previewBody" class="rich-edit" contenteditable="true"></div>
+    </div>
+    <div class="card" id="m_logCard" style="display:none;">
+      <h3>执行日志</h3>
+      <div class="log" id="m_taskLog"></div>
+    </div>
+    <div id="m_pushResultBox"></div>
+    <button class="btn block" id="m_pushDraftBtn">推送到微信草稿箱</button>
+  </div>
+
+  <!-- 定时 -->
+  <div class="page" data-page="cron">
+    <div class="card">
+      <h3>新增定时任务 <span class="hint-inline">（到点自动生成 + 配图 + 推送公众号草稿箱）</span></h3>
+      <div class="form-item"><label>关键词 / 主题</label><input id="j_keyword" placeholder="自动生成文章的主题，例如：AI 编程趋势"/></div>
+      <div class="form-item"><label>补充要求（可选）</label><textarea id="j_extra" placeholder="可选，例如：突出实战、面向小白、加入数据"></textarea></div>
+      <div class="form-item">
+        <label>排版主题</label>
+        <div id="j_themePicker" class="theme-picker"></div>
+      </div>
+      <div class="form-item toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="j_webSearch"/>
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">启用联网搜索<span class="hint-inline">（每次执行都会让 AI 检索近期新闻）</span></span>
+        </label>
+      </div>
+      <div class="form-item">
+        <label>Cron 表达式（5 段：分 时 日 月 周）</label>
+        <input id="j_cron" placeholder="例如 0 9 * * *  每天 9 点"/>
+        <div class="cron-presets">
+          <span class="preset" data-cron="0 9 * * *">每天 9 点</span>
+          <span class="preset" data-cron="0 9,18 * * *">每天 9/18 点</span>
+          <span class="preset" data-cron="0 10 * * 1-5">工作日 10 点</span>
+          <span class="preset" data-cron="0 */6 * * *">每 6 小时</span>
+          <span class="preset" data-cron="*/30 * * * *">每 30 分钟（测试）</span>
+        </div>
+      </div>
+      <button class="btn block" id="addJob">添加定时任务</button>
+    </div>
+    <div class="card">
+      <h3>已有任务 <span class="badge" id="jobCount">0</span></h3>
+      <div id="jobList"></div>
+    </div>
+  </div>
+
+  <!-- 历史 -->
+  <div class="page" data-page="history">
+    <div class="card">
+      <h3>发布历史</h3>
+      <div id="historyList"></div>
+    </div>
+  </div>
+
+  <div class="tabbar">
+    <div class="tab active" data-target="status"><span class="ic">📊</span>状态</div>
+    <div class="tab" data-target="config"><span class="ic">⚙️</span>配置</div>
+    <div class="tab" data-target="gen"><span class="ic">✨</span>生成</div>
+    <div class="tab" data-target="manual"><span class="ic">✍️</span>手写</div>
+    <div class="tab" data-target="cron"><span class="ic">⏰</span>定时</div>
+    <div class="tab" data-target="history"><span class="ic">📜</span>历史</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>

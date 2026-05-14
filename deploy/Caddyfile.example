@@ -1,0 +1,25 @@
+# 用 Caddy 给后台加 HTTPS（可选，需要一个域名指到服务器 IP）
+#
+# 安装 Caddy（Ubuntu/Debian）：
+#   sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
+#   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+#   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+#   sudo apt update && sudo apt install -y caddy
+#
+# 把本文件内容复制到 /etc/caddy/Caddyfile（替换 yourdomain.com）：
+#   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile
+#   sudo nano /etc/caddy/Caddyfile   # 改成你的域名
+#   sudo systemctl reload caddy
+#
+# Caddy 会自动申请 Let's Encrypt 证书并 80/443 端口监听。
+# 此时浏览器访问 https://yourdomain.com 即可，不再需要端口号。
+
+yourdomain.com {
+    encode gzip
+    reverse_proxy localhost:3030 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

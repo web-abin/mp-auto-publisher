@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<title>登录 · 公众号自动发文</title>
+<link rel="stylesheet" href="/style.css"/>
+</head>
+<body class="login-bg">
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="logo">📰</div>
+    <h1>公众号自动发文</h1>
+    <p class="subtitle">输入访问密钥进入后台</p>
+    <input id="key" type="password" placeholder="访问密钥" autocomplete="off" />
+    <button id="enter">进 入</button>
+    <p id="err" class="err"></p>
+  </div>
+  <div class="footer">© Auto Publisher · H5 后台</div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+async function login() {
+  const key = $('#key').value.trim();
+  if (!key) { $('#err').textContent = '请输入密钥'; return; }
+  $('#enter').disabled = true; $('#err').textContent = '';
+  try {
+    const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || '登录失败'); }
+    location.href = '/';
+  } catch (e) { $('#err').textContent = e.message; $('#enter').disabled = false; }
+}
+$('#enter').addEventListener('click', login);
+$('#key').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+</script>
+</body>
+</html>
