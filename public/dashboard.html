@@ -36,6 +36,14 @@
   <!-- 配置 -->
   <div class="page" data-page="config">
     <div class="card">
+      <h3>当前公网 IP <button class="btn small ghost" id="c_refreshIp" style="margin-left:8px;">刷新</button></h3>
+      <div class="kv"><span class="k">公网 IP</span><span class="v copy" id="c_publicIp">--</span></div>
+      <div class="kv"><span class="k">局域网 IP</span><span class="v" id="c_localIps">--</span></div>
+      <p class="hint" style="font-size:12px;color:#999;margin:10px 0 0;line-height:1.6;">
+        点击公网 IP 可复制。若 IP 发生变化，请把新 IP 添加到「微信公众平台 → 开发 → 基本配置 → IP 白名单」，否则发布会失败。
+      </p>
+    </div>
+    <div class="card">
       <h3>微信公众号</h3>
       <div class="form-item"><label>APPID</label><input id="c_appid" placeholder="wx开头的应用 ID"/></div>
       <div class="form-item"><label>AppSecret</label><input id="c_secret" type="password" placeholder="留空表示不修改"/></div>
@@ -144,10 +152,10 @@
         <textarea id="m_digest" maxlength="120" placeholder="留空则微信会自动截取正文开头"></textarea>
       </div>
       <div class="form-item">
-        <label>封面图 URL（必填）</label>
+        <label>封面图 URL（选填，留空自动取正文第一张图）</label>
         <div class="cover-wrap">
           <img id="m_coverImg" src="" alt="cover"/>
-          <input id="m_coverUrl" placeholder="封面图片直链 URL，例如 https://..."/>
+          <input id="m_coverUrl" placeholder="留空将自动使用正文第一张图作为封面"/>
         </div>
       </div>
       <div class="form-item">

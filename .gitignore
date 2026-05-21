@@ -1,0 +1,16 @@
+# 依赖
+node_modules/
+
+# 敏感配置 & 运行时数据
+.env
+.env.*
+data/
+
+# Electron 打包产物
+dist/
+
+# 编辑器 / 系统垃圾文件
+.DS_Store
+*.log
+.vscode/
+.idea/

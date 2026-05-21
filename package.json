@@ -1,18 +1,60 @@
 {
   "name": "mp-auto-publisher",
   "version": "1.0.0",
-  "description": "微信公众号全自动发文 H5 后台",
-  "main": "server.js",
+  "description": "微信公众号全自动发文 - 桌面端",
+  "main": "electron-main.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
     "stop": "pkill -f 'node .*server.js' 2>/dev/null; lsof -ti :${PORT:-3030} | xargs kill -9 2>/dev/null; true",
-    "restart": "npm run stop --silent && sleep 1 && node --watch server.js"
+    "restart": "npm run stop --silent && sleep 1 && node --watch server.js",
+    "electron": "electron .",
+    "build:mac": "electron-builder --mac --x64 --arm64",
+    "build:dmg": "electron-builder --mac dmg"
   },
   "dependencies": {
     "express": "^4.21.2",
     "express-session": "^1.18.1",
     "node-cron": "^3.0.3",
     "form-data": "^4.0.1"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.wangjunbin.mp-auto-publisher",
+    "productName": "公众号自动发文",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron-main.js",
+      "server.js",
+      "lib/**/*",
+      "public/**/*",
+      "data/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron-main.js"
+    },
+    "asar": true,
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    }
   }
 }

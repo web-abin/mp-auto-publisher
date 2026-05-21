@@ -11,16 +11,18 @@ const trends = require('./lib/trends');
 const pipeline = require('./lib/pipeline');
 const themes = require('./lib/themes');
 const FileSessionStore = require('./lib/session-store');
+const { getDataDir } = require('./lib/paths');
 
 const ACCESS_KEY = process.env.ACCESS_KEY || 'AIZAOWUJINHUA';
 const PORT = Number(process.env.PORT) || 3030;
+const SKIP_AUTH = process.env.MPAP_SKIP_AUTH === '1';
 
-const SECRET_FILE = path.join(__dirname, 'data', 'session-secret');
 function loadOrCreateSessionSecret() {
-  try { return fs.readFileSync(SECRET_FILE, 'utf8').trim(); } catch {}
+  const secretFile = path.join(getDataDir(), 'session-secret');
+  try { return fs.readFileSync(secretFile, 'utf8').trim(); } catch {}
   const s = crypto.randomBytes(32).toString('hex');
-  fs.mkdirSync(path.dirname(SECRET_FILE), { recursive: true });
-  fs.writeFileSync(SECRET_FILE, s, { mode: 0o600 });
+  fs.mkdirSync(path.dirname(secretFile), { recursive: true });
+  fs.writeFileSync(secretFile, s, { mode: 0o600 });
   return s;
 }
 
@@ -41,6 +43,7 @@ app.use(session({
 }));
 
 app.use((req, res, next) => {
+  if (SKIP_AUTH) return next();
   const open = ['/login', '/api/login', '/style.css', '/app.js', '/favicon.ico'];
   if (req.path === '/' || open.includes(req.path)) return next();
   if (req.path.startsWith('/api/')) {
@@ -54,7 +57,7 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 app.get('/', (req, res) => {
-  if (req.session.auth) return res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+  if (SKIP_AUTH || req.session.auth) return res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -112,9 +115,13 @@ app.post('/api/config', (req, res) => {
   const incoming = req.body || {};
   const merged = { ...old };
   for (const k of Object.keys(incoming)) {
-    const v = incoming[k];
+    let v = incoming[k];
     if (v === '' || v === null || v === undefined) continue;
-    if (typeof v === 'string' && v.startsWith('***')) continue;
+    if (typeof v === 'string') {
+      if (v.startsWith('***')) continue;
+      v = v.trim();
+      if (!v) continue;
+    }
     merged[k] = v;
   }
   store.setConfig(merged);
@@ -181,9 +188,9 @@ app.post('/api/generate', (req, res) => {
 });
 
 app.post('/api/push-draft', (req, res) => {
-  const { title, digest = '', html, coverUrl, keyword = '' } = req.body || {};
-  if (!title || !html || !coverUrl) {
-    return res.status(400).json({ error: 'title / html / coverUrl 均必填' });
+  const { title, digest = '', html, coverUrl = '', keyword = '' } = req.body || {};
+  if (!title || !html) {
+    return res.status(400).json({ error: 'title / html 必填' });
   }
   const id = newTask();
   res.json({ taskId: id });
@@ -312,16 +319,34 @@ for (const job of store.getJobs()) {
   if (job.enabled) scheduleJob(job);
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✨ 微信公众号自动发文后台已启动`);
-  console.log(`   本机访问:   http://localhost:${PORT}`);
-  const ifaces = os.networkInterfaces();
-  for (const list of Object.values(ifaces)) {
-    for (const i of list || []) {
-      if (i.family === 'IPv4' && !i.internal) {
-        console.log(`   局域网访问: http://${i.address}:${PORT}`);
+function startServer({ port = PORT, host = '0.0.0.0', silent = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, host, () => {
+      const actualPort = server.address().port;
+      if (!silent) {
+        console.log(`\n✨ 微信公众号自动发文后台已启动`);
+        console.log(`   本机访问:   http://localhost:${actualPort}`);
+        const ifaces = os.networkInterfaces();
+        for (const list of Object.values(ifaces)) {
+          for (const i of list || []) {
+            if (i.family === 'IPv4' && !i.internal) {
+              console.log(`   局域网访问: http://${i.address}:${actualPort}`);
+            }
+          }
+        }
+        if (!SKIP_AUTH) console.log(`   登录密钥:   ${ACCESS_KEY}\n`);
       }
-    }
-  }
-  console.log(`   登录密钥:   ${ACCESS_KEY}\n`);
-});
+      resolve({ port: actualPort, url: `http://127.0.0.1:${actualPort}`, server });
+    });
+    server.on('error', reject);
+  });
+}
+
+module.exports = { startServer, app };
+
+if (require.main === module) {
+  startServer().catch(e => {
+    console.error('server failed:', e);
+    process.exit(1);
+  });
+}

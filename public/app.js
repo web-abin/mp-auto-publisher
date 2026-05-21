@@ -62,7 +62,23 @@ async function loadStatus() {
 }
 
 // === Config ===
+async function loadConfigIp() {
+  $('#c_publicIp').textContent = '获取中…';
+  $('#c_localIps').textContent = '--';
+  try {
+    const s = await api('/api/status');
+    $('#c_publicIp').textContent = s.publicIp || '获取失败';
+    $('#c_publicIp').onclick = () => {
+      if (s.publicIp) navigator.clipboard?.writeText(s.publicIp).then(() => toast('已复制 IP'));
+    };
+    $('#c_localIps').textContent = (s.localIps || []).join(' / ') || '无';
+  } catch (e) {
+    $('#c_publicIp').textContent = '获取失败';
+  }
+}
+
 async function loadConfig() {
+  loadConfigIp();
   try {
     const c = await api('/api/config');
     $('#c_appid').value = c.appid || '';
@@ -75,6 +91,8 @@ async function loadConfig() {
     $('#c_imageKey').placeholder = c.imageKey ? `当前: ${c.imageKey}（留空不修改）` : '请输入 API Key';
   } catch (e) { toast(e.message); }
 }
+
+$('#c_refreshIp').addEventListener('click', loadConfigIp);
 $('#saveCfg').addEventListener('click', async () => {
   const body = {
     appid: $('#c_appid').value.trim(),
@@ -501,7 +519,6 @@ $('#m_pushDraftBtn').addEventListener('click', async () => {
   const coverUrl = $('#m_coverUrl').value.trim();
   const bodyRaw = $('#m_body').value.trim();
   if (!title) return toast('标题不能为空');
-  if (!coverUrl) return toast('封面图 URL 不能为空');
   if (!bodyRaw) return toast('正文不能为空');
 
   if (!$('#m_previewBody').innerHTML.trim()) {
