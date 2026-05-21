@@ -14,3 +14,9 @@ dist/
 *.log
 .vscode/
 .idea/
+dist/
+build/
+*.dmg
+*.zip
+node_modules/
+.env
