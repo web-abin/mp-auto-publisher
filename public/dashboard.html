@@ -96,6 +96,19 @@
           <span class="toggle-text">启用联网搜索<span class="hint-inline">（让 AI 引用近期新闻/事实，更贵更慢）</span></span>
         </label>
       </div>
+      <div class="form-item toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="g_useNews"/>
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">抓取新闻当素材<span class="hint-inline">（先抓 5 条国内新闻，AI 据此撰写，免费）</span></span>
+        </label>
+      </div>
+      <div class="form-item" id="g_newsCategoryBox" style="display:none;">
+        <label>新闻类目<span class="hint-inline">（不选则按关键词抓取）</span></label>
+        <select id="g_newsCategory">
+          <option value="">按关键词抓取</option>
+        </select>
+      </div>
       <div id="trendsBox" style="margin-bottom:14px;display:none;">
         <div style="font-size:13px;color:#555;margin:6px 0 4px;">已挖掘的相关热搜词（点击可加入关键词）：</div>
         <div id="trendsList"></div>
@@ -197,6 +210,19 @@
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
           <span class="toggle-text">启用联网搜索<span class="hint-inline">（每次执行都会让 AI 检索近期新闻）</span></span>
         </label>
+      </div>
+      <div class="form-item toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="j_useNews"/>
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">抓取新闻当素材<span class="hint-inline">（免费，先抓 5 条国内新闻给 AI 参考）</span></span>
+        </label>
+      </div>
+      <div class="form-item" id="j_newsCategoryBox" style="display:none;">
+        <label>新闻类目<span class="hint-inline">（不选则按关键词抓取）</span></label>
+        <select id="j_newsCategory">
+          <option value="">按关键词抓取</option>
+        </select>
       </div>
       <div class="form-item">
         <label>Cron 表达式（5 段：分 时 日 月 周）</label>

@@ -10,6 +10,7 @@ const store = require('./lib/store');
 const trends = require('./lib/trends');
 const pipeline = require('./lib/pipeline');
 const themes = require('./lib/themes');
+const news = require('./lib/news');
 const FileSessionStore = require('./lib/session-store');
 const { getDataDir } = require('./lib/paths');
 
@@ -166,6 +167,10 @@ app.get('/api/themes', (req, res) => {
   res.json({ themes: themes.listThemes(), default: themes.DEFAULT_THEME });
 });
 
+app.get('/api/news-categories', (req, res) => {
+  res.json({ categories: news.listCategories() });
+});
+
 app.post('/api/restyle', (req, res) => {
   const { bodyRaw = '', imgUrlMap = {}, theme = themes.DEFAULT_THEME } = req.body || {};
   if (!bodyRaw) return res.status(400).json({ error: 'bodyRaw required' });
@@ -174,7 +179,10 @@ app.post('/api/restyle', (req, res) => {
 });
 
 app.post('/api/generate', (req, res) => {
-  const { keyword, extra = '', theme = themes.DEFAULT_THEME, webSearch = false } = req.body || {};
+  const {
+    keyword, extra = '', theme = themes.DEFAULT_THEME, webSearch = false,
+    useNews = false, newsCategory = '',
+  } = req.body || {};
   if (!keyword) return res.status(400).json({ error: 'keyword required' });
   const id = newTask();
   res.json({ taskId: id });
@@ -183,6 +191,7 @@ app.post('/api/generate', (req, res) => {
     try {
       const result = await pipeline.generateContent({
         keyword, extra, themeName: theme, webSearch: !!webSearch,
+        useNews: !!useNews, newsCategory,
         log: (m) => appendLog(id, m),
         onTextReady: (partial) => bumpResult(id, partial),
       });
@@ -231,6 +240,7 @@ app.post('/api/jobs', (req, res) => {
   const {
     keyword, cron: cronExpr, extra = '', enabled = true,
     theme = themes.DEFAULT_THEME, webSearch = false,
+    useNews = false, newsCategory = '',
   } = req.body || {};
   if (!keyword || !cronExpr) return res.status(400).json({ error: 'keyword 和 cron 必填' });
   if (!cron.validate(cronExpr)) return res.status(400).json({ error: 'cron 表达式不合法' });
@@ -239,6 +249,7 @@ app.post('/api/jobs', (req, res) => {
   const job = {
     id, keyword, cron: cronExpr, extra, enabled,
     theme, webSearch: !!webSearch,
+    useNews: !!useNews, newsCategory: newsCategory || '',
     lastRun: null, lastResult: null,
   };
   jobs.push(job);
@@ -278,11 +289,13 @@ app.post('/api/jobs/:id/run', (req, res) => {
   (async () => {
     const t = taskLogs.get(id);
     try {
-      appendLog(id, `手动触发任务 ${job.keyword}${job.webSearch ? '（联网搜索）' : ''}`);
+      appendLog(id, `手动触发任务 ${job.keyword}${job.webSearch ? '（联网搜索）' : ''}${job.useNews ? '（抓新闻）' : ''}`);
       const result = await pipeline.runFullPipeline({
         keyword: job.keyword, extra: job.extra, pushDraft: true,
         themeName: job.theme || themes.DEFAULT_THEME,
         webSearch: !!job.webSearch,
+        useNews: !!job.useNews,
+        newsCategory: job.newsCategory || '',
         log: (m) => appendLog(id, m),
       });
       t.result = result; t.done = true;
@@ -304,11 +317,13 @@ const scheduledTasks = new Map();
 function scheduleJob(job) {
   const task = cron.schedule(job.cron, async () => {
     try {
-      console.log(`[CRON] 执行任务 ${job.keyword}${job.webSearch ? '（联网搜索）' : ''}`);
+      console.log(`[CRON] 执行任务 ${job.keyword}${job.webSearch ? '（联网搜索）' : ''}${job.useNews ? '（抓新闻）' : ''}`);
       const result = await pipeline.runFullPipeline({
         keyword: job.keyword, extra: job.extra, pushDraft: true,
         themeName: job.theme || themes.DEFAULT_THEME,
         webSearch: !!job.webSearch,
+        useNews: !!job.useNews,
+        newsCategory: job.newsCategory || '',
         log: (m) => console.log(`  ${m}`),
       });
       const jobs = store.getJobs();

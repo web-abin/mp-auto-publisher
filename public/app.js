@@ -184,6 +184,28 @@ async function switchTheme(key) {
 }
 loadThemes();
 
+async function loadNewsCategories() {
+  try {
+    const r = await api('/api/news-categories');
+    const opts = (r.categories || []).map(c =>
+      `<option value="${escapeHtml(c.key)}">${escapeHtml(c.label)}</option>`
+    ).join('');
+    const genSel = $('#g_newsCategory');
+    const jobSel = $('#j_newsCategory');
+    if (genSel) genSel.insertAdjacentHTML('beforeend', opts);
+    if (jobSel) jobSel.insertAdjacentHTML('beforeend', opts);
+  } catch (e) { /* ignore */ }
+}
+loadNewsCategories();
+
+// 新闻开关联动类目下拉
+$('#g_useNews')?.addEventListener('change', () => {
+  $('#g_newsCategoryBox').style.display = $('#g_useNews').checked ? 'block' : 'none';
+});
+$('#j_useNews')?.addEventListener('change', () => {
+  $('#j_newsCategoryBox').style.display = $('#j_useNews').checked ? 'block' : 'none';
+});
+
 // === 关键词历史记录（localStorage，最多 5 个）===
 const KW_HISTORY_KEY = 'mp_keyword_history';
 const KW_HISTORY_MAX = 5;
@@ -245,7 +267,9 @@ $('#genBtn').addEventListener('click', async () => {
   userEdited.title = userEdited.digest = userEdited.cover = userEdited.body = false;
   try {
     const webSearch = $('#g_webSearch').checked;
-    const { taskId } = await api('/api/generate', { method: 'POST', body: { keyword, extra, theme: activeTheme, webSearch } });
+    const useNews = $('#g_useNews').checked;
+    const newsCategory = useNews ? $('#g_newsCategory').value : '';
+    const { taskId } = await api('/api/generate', { method: 'POST', body: { keyword, extra, theme: activeTheme, webSearch, useNews, newsCategory } });
     pollGenerateTask(taskId);
   } catch (e) {
     toast(e.message);
@@ -307,7 +331,7 @@ function renderEditablePreview(r) {
     if (!userEdited.body) $('#p_body').innerHTML = r.html || '';
   }
 
-  $('#pushDraftBtn').disabled = imagesPending || !r.coverUrl;
+  $('#pushDraftBtn').disabled = imagesPending;
   $('#pushDraftBtn').innerHTML = imagesPending
     ? '<span class="spinner"></span>配图加载中…'
     : '推送到微信草稿箱';
@@ -320,7 +344,6 @@ $('#pushDraftBtn').addEventListener('click', async () => {
   const coverUrl = $('#p_coverUrl').value.trim();
   const html = $('#p_body').innerHTML.trim();
   if (!title) return toast('标题不能为空');
-  if (!coverUrl) return toast('封面图 URL 不能为空');
   if (!html) return toast('正文不能为空');
 
   $('#pushDraftBtn').disabled = true;
@@ -393,14 +416,18 @@ $('#addJob').addEventListener('click', async () => {
   const cronExpr = $('#j_cron').value.trim();
   const extra = $('#j_extra').value.trim();
   const webSearch = $('#j_webSearch').checked;
+  const useNews = $('#j_useNews').checked;
+  const newsCategory = useNews ? $('#j_newsCategory').value : '';
   const theme = jobActiveTheme || activeTheme;
   if (!keyword || !cronExpr) return toast('关键词和 cron 都要填');
   try {
     $('#addJob').disabled = true;
-    await api('/api/jobs', { method: 'POST', body: { keyword, cron: cronExpr, extra, theme, webSearch } });
+    await api('/api/jobs', { method: 'POST', body: { keyword, cron: cronExpr, extra, theme, webSearch, useNews, newsCategory } });
     toast('已添加');
     $('#j_keyword').value = ''; $('#j_extra').value = ''; $('#j_cron').value = '';
     $('#j_webSearch').checked = false;
+    $('#j_useNews').checked = false;
+    $('#j_newsCategoryBox').style.display = 'none';
     loadJobs();
   } catch (e) { toast(e.message); }
   finally { $('#addJob').disabled = false; }
@@ -420,7 +447,7 @@ async function loadJobs() {
       <div class="row">
         <div>
           <div class="kw">${escapeHtml(j.keyword)}</div>
-          <div class="meta">cron: <code>${escapeHtml(j.cron)}</code> · ${j.enabled ? '✅ 启用' : '⏸ 已停'} · 主题: ${escapeHtml(themeLabel(j.theme))} · 联网: ${j.webSearch ? '✅' : '✕'}</div>
+          <div class="meta">cron: <code>${escapeHtml(j.cron)}</code> · ${j.enabled ? '✅ 启用' : '⏸ 已停'} · 主题: ${escapeHtml(themeLabel(j.theme))} · 联网: ${j.webSearch ? '✅' : '✕'} · 抓新闻: ${j.useNews ? (j.newsCategory ? `✅(${escapeHtml(j.newsCategory)})` : '✅(关键词)') : '✕'}</div>
           <div class="meta">最近: ${j.lastRun ? new Date(j.lastRun).toLocaleString() + ' — ' + escapeHtml(j.lastResult || '') : '从未执行'}</div>
         </div>
       </div>
