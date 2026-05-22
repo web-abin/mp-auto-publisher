@@ -51,6 +51,12 @@ mp-auto-publisher/
 - 内容生成 prompt 已要求规避政治敏感、医疗夸大、金融承诺等违规内容；上线前请人工抽检几篇。
 
 
-pexles
+## 杀死进程
 
 杀死进程 lsof -i :3030 -t | xargs kill -9 2>/dev/null  
+
+
+## 部署到服务器
+ cd ~/mp-auto-publisher                                                   
+  git pull                                                               
+  pm2 restart mp-auto-publisher
