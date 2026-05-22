@@ -74,11 +74,20 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/status', async (req, res) => {
   let publicIp = null;
-  try {
-    const r = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(4000) });
-    const j = await r.json();
-    publicIp = j.ip;
-  } catch {}
+  const ipSources = [
+    { url: 'https://ip.3322.net', parse: (t) => t.trim() },
+    { url: 'https://www.taobao.com/help/getip.php', parse: (t) => (t.match(/ip:"([\d.]+)"/) || [])[1] },
+    { url: 'https://api.ipify.org?format=json', parse: (t) => JSON.parse(t).ip },
+    { url: 'https://ifconfig.me/ip', parse: (t) => t.trim() },
+  ];
+  for (const src of ipSources) {
+    try {
+      const r = await fetch(src.url, { signal: AbortSignal.timeout(3000) });
+      const t = await r.text();
+      const ip = src.parse(t);
+      if (ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip)) { publicIp = ip; break; }
+    } catch {}
+  }
   const ifaces = os.networkInterfaces();
   const localIps = [];
   for (const list of Object.values(ifaces)) {
