@@ -57,6 +57,10 @@ mp-auto-publisher/
 
 
 ## 部署到服务器
+
+bash ~/mp-auto-publisher/deploy/redeploy.sh
+
+
  cd ~/mp-auto-publisher                                                   
   git pull                                                               
   pm2 restart mp-auto-publisher                                             
