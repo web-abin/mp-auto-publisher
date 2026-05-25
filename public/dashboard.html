@@ -61,16 +61,20 @@
       <div class="form-item"><label>API Base URL（可选，使用代理时填写）</label><input id="c_aiBaseUrl" placeholder="https://api.anthropic.com"/></div>
     </div>
     <div class="card">
-      <h3>图库（自动配图）</h3>
-      <div class="form-item"><label>图库</label>
-        <select id="c_imageProvider">
-          <option value="pexels">Pexels（免费）</option>
-          <option value="pixabay">Pixabay（免费）</option>
-          <option value="unsplash">Unsplash</option>
-          <option value="placeholder">占位图（无需 Key）</option>
-        </select>
+      <h3>图库（自动配图，多图源并行）</h3>
+      <p class="hint" style="font-size:12px;color:#999;margin:0 0 10px;line-height:1.6;">
+        填几家就同时搜几家，候选池更大、AI 挑图更贴题。全部留空则用免费占位图。
+      </p>
+      <div class="form-item"><label>Pexels Key</label><input id="c_imageKey_pexels" type="password" placeholder="留空表示不修改 / 不启用"/></div>
+      <div class="form-item"><label>Pixabay Key</label><input id="c_imageKey_pixabay" type="password" placeholder="留空表示不修改 / 不启用"/></div>
+      <div class="form-item"><label>Unsplash Key</label><input id="c_imageKey_unsplash" type="password" placeholder="留空表示不修改 / 不启用"/></div>
+      <div class="form-item toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="c_enableBaidu"/>
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">启用百度搜图<span class="hint-inline">（中文 query 友好、无需 Key；但抓的是第三方图，版权状态不明，公众号配图有侵权风险，请自行评估）</span></span>
+        </label>
       </div>
-      <div class="form-item"><label>图库 API Key</label><input id="c_imageKey" type="password" placeholder="留空表示不修改 / 占位图无需填写"/></div>
     </div>
     <button class="btn block" id="saveCfg">保存配置</button>
   </div>

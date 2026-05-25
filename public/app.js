@@ -56,7 +56,9 @@ async function loadStatus() {
     $('#cfgAppid').className = 'v ' + (s.appidConfigured ? 'ok' : 'warn');
     $('#cfgAi').textContent = s.aiConfigured ? '已配置 ✓' : '未配置';
     $('#cfgAi').className = 'v ' + (s.aiConfigured ? 'ok' : 'warn');
-    $('#cfgImg').textContent = s.imageProvider || '默认占位图';
+    $('#cfgImg').textContent = (s.imageSources && s.imageSources.length)
+      ? s.imageSources.join(' + ')
+      : '默认占位图';
     $('#cfgJobs').textContent = `${s.jobCount} 个`;
   } catch (e) { toast(e.message); }
 }
@@ -87,8 +89,15 @@ async function loadConfig() {
     $('#c_aiKey').placeholder = c.aiKey ? `当前: ${c.aiKey}（留空不修改）` : '请输入 API Key';
     $('#c_aiModel').value = c.aiModel || '';
     $('#c_aiBaseUrl').value = c.aiBaseUrl || '';
-    $('#c_imageProvider').value = c.imageProvider || 'pexels';
-    $('#c_imageKey').placeholder = c.imageKey ? `当前: ${c.imageKey}（留空不修改）` : '请输入 API Key';
+    const imgKeys = c.imageKeys || {};
+    const setImgPh = (id, val) => {
+      $(id).value = '';
+      $(id).placeholder = val ? `当前: ${val}（留空不修改）` : '留空表示不启用';
+    };
+    setImgPh('#c_imageKey_pexels', imgKeys.pexels);
+    setImgPh('#c_imageKey_pixabay', imgKeys.pixabay);
+    setImgPh('#c_imageKey_unsplash', imgKeys.unsplash);
+    $('#c_enableBaidu').checked = !!c.enableBaidu;
   } catch (e) { toast(e.message); }
 }
 
@@ -101,14 +110,21 @@ $('#saveCfg').addEventListener('click', async () => {
     aiKey: $('#c_aiKey').value,
     aiModel: $('#c_aiModel').value.trim(),
     aiBaseUrl: $('#c_aiBaseUrl').value.trim(),
-    imageProvider: $('#c_imageProvider').value,
-    imageKey: $('#c_imageKey').value,
+    imageKeys: {
+      pexels: $('#c_imageKey_pexels').value,
+      pixabay: $('#c_imageKey_pixabay').value,
+      unsplash: $('#c_imageKey_unsplash').value,
+    },
+    enableBaidu: $('#c_enableBaidu').checked,
   };
   try {
     $('#saveCfg').disabled = true;
     await api('/api/config', { method: 'POST', body });
     toast('已保存');
-    $('#c_secret').value = ''; $('#c_aiKey').value = ''; $('#c_imageKey').value = '';
+    $('#c_secret').value = ''; $('#c_aiKey').value = '';
+    $('#c_imageKey_pexels').value = '';
+    $('#c_imageKey_pixabay').value = '';
+    $('#c_imageKey_unsplash').value = '';
     loadConfig();
   } catch (e) { toast(e.message); }
   finally { $('#saveCfg').disabled = false; }

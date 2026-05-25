@@ -106,17 +106,35 @@ app.get('/api/status', async (req, res) => {
     appidConfigured: !!cfg.appid,
     aiConfigured: !!cfg.aiKey,
     imageProvider: cfg.imageProvider,
+    imageSources: (() => {
+      const m = cfg.imageKeys || {};
+      const list = ['pexels', 'pixabay', 'unsplash'].filter(p => m[p]);
+      if (cfg.enableBaidu) list.push('baidu');
+      if (list.length) return list;
+      if (cfg.imageKey && cfg.imageProvider && cfg.imageProvider !== 'placeholder') return [cfg.imageProvider];
+      return [];
+    })(),
     jobCount: store.getJobs().length,
   });
 });
 
+function maskKey(k) {
+  return k ? '***' + k.slice(-4) : '';
+}
+
 app.get('/api/config', (req, res) => {
   const cfg = store.getConfig();
+  const imageKeys = cfg.imageKeys || {};
   res.json({
     ...cfg,
-    secret: cfg.secret ? '***' + cfg.secret.slice(-4) : '',
-    aiKey: cfg.aiKey ? '***' + cfg.aiKey.slice(-4) : '',
-    imageKey: cfg.imageKey ? '***' + cfg.imageKey.slice(-4) : '',
+    secret: maskKey(cfg.secret),
+    aiKey: maskKey(cfg.aiKey),
+    imageKey: maskKey(cfg.imageKey),
+    imageKeys: {
+      pexels: maskKey(imageKeys.pexels),
+      pixabay: maskKey(imageKeys.pixabay),
+      unsplash: maskKey(imageKeys.unsplash),
+    },
   });
 });
 
@@ -126,7 +144,21 @@ app.post('/api/config', (req, res) => {
   const merged = { ...old };
   for (const k of Object.keys(incoming)) {
     let v = incoming[k];
-    if (v === '' || v === null || v === undefined) continue;
+    if (v === null || v === undefined) continue;
+    if (k === 'imageKeys' && v && typeof v === 'object') {
+      const oldMap = merged.imageKeys || {};
+      const next = { ...oldMap };
+      for (const p of Object.keys(v)) {
+        let pv = v[p];
+        if (typeof pv !== 'string') continue;
+        if (pv.startsWith('***')) continue;
+        pv = pv.trim();
+        next[p] = pv;
+      }
+      merged.imageKeys = next;
+      continue;
+    }
+    if (v === '') continue;
     if (typeof v === 'string') {
       if (v.startsWith('***')) continue;
       v = v.trim();

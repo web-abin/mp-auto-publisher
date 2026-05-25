@@ -60,3 +60,5 @@ mp-auto-publisher/
  cd ~/mp-auto-publisher                                                   
   git pull                                                               
   pm2 restart mp-auto-publisher
+
+  tmux capture-pane -t metastaff -p -S -2000 | grep -iE 'error|fail|warn|compil' |   tail-40                                                 
