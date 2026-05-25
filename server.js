@@ -11,6 +11,7 @@ const trends = require('./lib/trends');
 const pipeline = require('./lib/pipeline');
 const themes = require('./lib/themes');
 const news = require('./lib/news');
+const writers = require('./lib/writers');
 const FileSessionStore = require('./lib/session-store');
 const { getDataDir } = require('./lib/paths');
 
@@ -199,6 +200,20 @@ app.get('/api/themes', (req, res) => {
   res.json({ themes: themes.listThemes(), default: themes.DEFAULT_THEME });
 });
 
+app.get('/api/writers', (req, res) => {
+  res.json({ writers: writers.listWriters(), defaultId: writers.DEFAULT_ID });
+});
+
+app.post('/api/writers', (req, res) => {
+  const { writers: list } = req.body || {};
+  try {
+    const saved = writers.saveWriters(list);
+    res.json({ writers: saved });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/news-categories', (req, res) => {
   res.json({ categories: news.listCategories() });
 });
@@ -213,7 +228,7 @@ app.post('/api/restyle', (req, res) => {
 app.post('/api/generate', (req, res) => {
   const {
     keyword, extra = '', theme = themes.DEFAULT_THEME, webSearch = false,
-    useNews = false, newsCategory = '',
+    useNews = false, newsCategory = '', writerId = writers.DEFAULT_ID,
   } = req.body || {};
   if (!keyword) return res.status(400).json({ error: 'keyword required' });
   const id = newTask();
@@ -221,9 +236,12 @@ app.post('/api/generate', (req, res) => {
   (async () => {
     const t = taskLogs.get(id);
     try {
+      const writer = writers.getWriter(writerId) || writers.getWriter(writers.DEFAULT_ID);
       const result = await pipeline.generateContent({
         keyword, extra, themeName: theme, webSearch: !!webSearch,
         useNews: !!useNews, newsCategory,
+        writerPrompt: writer ? writer.prompt : '',
+        writerName: writer ? writer.name : '',
         log: (m) => appendLog(id, m),
         onTextReady: (partial) => bumpResult(id, partial),
       });
@@ -272,7 +290,7 @@ app.post('/api/jobs', (req, res) => {
   const {
     keyword, cron: cronExpr, extra = '', enabled = true,
     theme = themes.DEFAULT_THEME, webSearch = false,
-    useNews = false, newsCategory = '',
+    useNews = false, newsCategory = '', writerId = writers.DEFAULT_ID,
   } = req.body || {};
   if (!keyword || !cronExpr) return res.status(400).json({ error: 'keyword 和 cron 必填' });
   if (!cron.validate(cronExpr)) return res.status(400).json({ error: 'cron 表达式不合法' });
@@ -282,6 +300,7 @@ app.post('/api/jobs', (req, res) => {
     id, keyword, cron: cronExpr, extra, enabled,
     theme, webSearch: !!webSearch,
     useNews: !!useNews, newsCategory: newsCategory || '',
+    writerId: writerId || writers.DEFAULT_ID,
     lastRun: null, lastResult: null,
   };
   jobs.push(job);
@@ -322,12 +341,15 @@ app.post('/api/jobs/:id/run', (req, res) => {
     const t = taskLogs.get(id);
     try {
       appendLog(id, `手动触发任务 ${job.keyword}${job.webSearch ? '（联网搜索）' : ''}${job.useNews ? '（抓新闻）' : ''}`);
+      const w = writers.getWriter(job.writerId) || writers.getWriter(writers.DEFAULT_ID);
       const result = await pipeline.runFullPipeline({
         keyword: job.keyword, extra: job.extra, pushDraft: true,
         themeName: job.theme || themes.DEFAULT_THEME,
         webSearch: !!job.webSearch,
         useNews: !!job.useNews,
         newsCategory: job.newsCategory || '',
+        writerPrompt: w ? w.prompt : '',
+        writerName: w ? w.name : '',
         log: (m) => appendLog(id, m),
       });
       t.result = result; t.done = true;
@@ -350,12 +372,15 @@ function scheduleJob(job) {
   const task = cron.schedule(job.cron, async () => {
     try {
       console.log(`[CRON] 执行任务 ${job.keyword}${job.webSearch ? '（联网搜索）' : ''}${job.useNews ? '（抓新闻）' : ''}`);
+      const w = writers.getWriter(job.writerId) || writers.getWriter(writers.DEFAULT_ID);
       const result = await pipeline.runFullPipeline({
         keyword: job.keyword, extra: job.extra, pushDraft: true,
         themeName: job.theme || themes.DEFAULT_THEME,
         webSearch: !!job.webSearch,
         useNews: !!job.useNews,
         newsCategory: job.newsCategory || '',
+        writerPrompt: w ? w.prompt : '',
+        writerName: w ? w.name : '',
         log: (m) => console.log(`  ${m}`),
       });
       const jobs = store.getJobs();

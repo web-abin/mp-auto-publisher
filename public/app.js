@@ -159,6 +159,8 @@ let lastRevision = -1;
 let firstPreviewRendered = false;
 let availableThemes = [];
 let activeTheme = 'default-green';
+let availableWriters = [];
+let defaultWriterId = 'default';
 const userEdited = { title: false, digest: false, cover: false, body: false };
 
 async function loadThemes() {
@@ -199,6 +201,96 @@ async function switchTheme(key) {
   } catch (e) { toast('切换主题失败: ' + e.message); }
 }
 loadThemes();
+
+// === 写手 ===
+async function loadWriters() {
+  try {
+    const r = await api('/api/writers');
+    availableWriters = r.writers || [];
+    defaultWriterId = r.defaultId || (availableWriters[0] && availableWriters[0].id) || 'default';
+    renderWriterSelects();
+    renderWriterEditor();
+  } catch (e) { /* ignore */ }
+}
+
+function renderWriterSelects() {
+  for (const id of ['#g_writerId', '#j_writerId']) {
+    const sel = $(id);
+    if (!sel) continue;
+    const prev = sel.value;
+    sel.innerHTML = availableWriters.map(w =>
+      `<option value="${escapeHtml(w.id)}">${escapeHtml(w.name)}</option>`
+    ).join('');
+    if (prev && availableWriters.some(w => w.id === prev)) sel.value = prev;
+    else sel.value = defaultWriterId;
+  }
+}
+
+function renderWriterEditor() {
+  const box = $('#writerList');
+  if (!box) return;
+  if (!availableWriters.length) { box.innerHTML = ''; return; }
+  box.innerHTML = availableWriters.map((w, i) => `
+    <div class="writer-item" data-idx="${i}">
+      <div class="writer-head">
+        <input class="w-name" placeholder="写手名称" value="${escapeHtml(w.name || '')}" />
+        ${w.builtin ? '<span class="builtin-badge">默认</span>' : ''}
+        <button class="del-btn" data-act="del" ${w.builtin ? 'disabled title="默认写手不可删除"' : ''}>删除</button>
+      </div>
+      <textarea class="w-prompt" placeholder="系统提示词（决定文章风格、结构、口吻）">${escapeHtml(w.prompt || '')}</textarea>
+    </div>
+  `).join('');
+  box.querySelectorAll('.writer-item').forEach(el => {
+    const idx = Number(el.dataset.idx);
+    const delBtn = el.querySelector('.del-btn');
+    delBtn.onclick = () => {
+      if (delBtn.disabled) return;
+      if (!confirm(`确定删除写手「${availableWriters[idx].name}」？`)) return;
+      collectWriterEdits();
+      availableWriters.splice(idx, 1);
+      renderWriterEditor();
+    };
+  });
+}
+
+function collectWriterEdits() {
+  const items = $$('#writerList .writer-item');
+  items.forEach(el => {
+    const idx = Number(el.dataset.idx);
+    if (!availableWriters[idx]) return;
+    availableWriters[idx].name = el.querySelector('.w-name').value.trim();
+    availableWriters[idx].prompt = el.querySelector('.w-prompt').value;
+  });
+}
+
+$('#addWriterBtn')?.addEventListener('click', () => {
+  collectWriterEdits();
+  availableWriters.push({
+    id: 'new_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: '新写手',
+    prompt: '',
+    builtin: false,
+  });
+  renderWriterEditor();
+});
+
+$('#saveWritersBtn')?.addEventListener('click', async () => {
+  collectWriterEdits();
+  $('#saveWritersBtn').disabled = true;
+  try {
+    const r = await api('/api/writers', { method: 'POST', body: { writers: availableWriters } });
+    availableWriters = r.writers || [];
+    renderWriterEditor();
+    renderWriterSelects();
+    toast('已保存');
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    $('#saveWritersBtn').disabled = false;
+  }
+});
+
+loadWriters();
 
 async function loadNewsCategories() {
   try {
@@ -285,7 +377,8 @@ $('#genBtn').addEventListener('click', async () => {
     const webSearch = $('#g_webSearch').checked;
     const useNews = $('#g_useNews').checked;
     const newsCategory = useNews ? $('#g_newsCategory').value : '';
-    const { taskId } = await api('/api/generate', { method: 'POST', body: { keyword, extra, theme: activeTheme, webSearch, useNews, newsCategory } });
+    const writerId = $('#g_writerId').value || defaultWriterId;
+    const { taskId } = await api('/api/generate', { method: 'POST', body: { keyword, extra, theme: activeTheme, webSearch, useNews, newsCategory, writerId } });
     pollGenerateTask(taskId);
   } catch (e) {
     toast(e.message);
@@ -438,7 +531,8 @@ $('#addJob').addEventListener('click', async () => {
   if (!keyword || !cronExpr) return toast('关键词和 cron 都要填');
   try {
     $('#addJob').disabled = true;
-    await api('/api/jobs', { method: 'POST', body: { keyword, cron: cronExpr, extra, theme, webSearch, useNews, newsCategory } });
+    const writerId = $('#j_writerId').value || defaultWriterId;
+    await api('/api/jobs', { method: 'POST', body: { keyword, cron: cronExpr, extra, theme, webSearch, useNews, newsCategory, writerId } });
     toast('已添加');
     $('#j_keyword').value = ''; $('#j_extra').value = ''; $('#j_cron').value = '';
     $('#j_webSearch').checked = false;
@@ -459,11 +553,15 @@ async function loadJobs() {
       const t = availableThemes.find(x => x.key === key);
       return t ? t.label : (key || '默认');
     };
+    const writerLabel = (id) => {
+      const w = availableWriters.find(x => x.id === id);
+      return w ? w.name : (id || 'AI公众号写手');
+    };
     box.innerHTML = list.map(j => `<div class="job-item" data-id="${j.id}">
       <div class="row">
         <div>
           <div class="kw">${escapeHtml(j.keyword)}</div>
-          <div class="meta">cron: <code>${escapeHtml(j.cron)}</code> · ${j.enabled ? '✅ 启用' : '⏸ 已停'} · 主题: ${escapeHtml(themeLabel(j.theme))} · 联网: ${j.webSearch ? '✅' : '✕'} · 抓新闻: ${j.useNews ? (j.newsCategory ? `✅(${escapeHtml(j.newsCategory)})` : '✅(关键词)') : '✕'}</div>
+          <div class="meta">cron: <code>${escapeHtml(j.cron)}</code> · ${j.enabled ? '✅ 启用' : '⏸ 已停'} · 写手: ${escapeHtml(writerLabel(j.writerId))} · 主题: ${escapeHtml(themeLabel(j.theme))} · 联网: ${j.webSearch ? '✅' : '✕'} · 抓新闻: ${j.useNews ? (j.newsCategory ? `✅(${escapeHtml(j.newsCategory)})` : '✅(关键词)') : '✕'}</div>
           <div class="meta">最近: ${j.lastRun ? new Date(j.lastRun).toLocaleString() + ' — ' + escapeHtml(j.lastResult || '') : '从未执行'}</div>
         </div>
       </div>
