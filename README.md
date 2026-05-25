@@ -59,6 +59,4 @@ mp-auto-publisher/
 ## 部署到服务器
  cd ~/mp-auto-publisher                                                   
   git pull                                                               
-  pm2 restart mp-auto-publisher
-
-  tmux capture-pane -t metastaff -p -S -2000 | grep -iE 'error|fail|warn|compil' |   tail-40                                                 
+  pm2 restart mp-auto-publisher                                             
