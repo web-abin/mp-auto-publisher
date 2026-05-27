@@ -685,46 +685,78 @@ function renderImgPicker(r) {
 
 async function selectImgCandidate(tag, url) {
   if (!currentArticle || !url) return;
+
+  let updatedImg = null;
   if (tag === '__cover') {
     $('#p_coverUrl').value = url;
     $('#p_coverImg').src = url;
     currentArticle.coverUrl = url;
     if (currentArticle.imgUrlMap) currentArticle.imgUrlMap.__cover = url;
     userEdited.cover = true;
+    updatedImg = $('#p_coverImg');
   } else {
     const prev = currentArticle.imgUrlMap && currentArticle.imgUrlMap[tag];
     if (!currentArticle.imgUrlMap) currentArticle.imgUrlMap = {};
     currentArticle.imgUrlMap[tag] = url;
-    // 优先做 img src 原地替换（保留用户已做的文字编辑）；
-    // 如果该 slot 当前是「配图加载中…」占位符（AI 之前拒图 / 用户编辑过正文），
-    // 占位符是 <p> 而不是 <img>，src 替换匹配不到——这种情况回退到整段重渲染。
     const bodyEl = $('#p_body');
-    let replaced = false;
+
+    // 路径 1：slot 当前是 <img>，原地换 src（瞬时，保留用户文字编辑）
     if (prev) {
       bodyEl.querySelectorAll('img').forEach(img => {
         if (img.getAttribute('src') === prev) {
           img.setAttribute('src', url);
-          replaced = true;
+          updatedImg = img;
         }
       });
     }
-    if (!replaced) {
+
+    // 路径 2：slot 当前是「配图加载中」<p> 占位（AI 之前拒图或还没拼上）。
+    // 借用现成 img 的样式，就地把 <p> 替换成 <img>——同样瞬时、不掉文字。
+    if (!updatedImg) {
+      const placeholderP = findPlaceholderParagraph(bodyEl, tag);
+      const sampleImg = bodyEl.querySelector('img');
+      if (placeholderP && sampleImg) {
+        const sampleWrap = sampleImg.closest('p');
+        const wrapStyle = sampleWrap ? sampleWrap.getAttribute('style') : 'text-align:center;margin:18px 0;';
+        const imgStyle = sampleImg.getAttribute('style') || 'max-width:100%;display:inline-block;border-radius:8px;';
+        const newP = document.createElement('p');
+        if (wrapStyle) newP.setAttribute('style', wrapStyle);
+        const newImg = document.createElement('img');
+        newImg.setAttribute('src', url);
+        if (imgStyle) newImg.setAttribute('style', imgStyle);
+        newP.appendChild(newImg);
+        placeholderP.replaceWith(newP);
+        updatedImg = newImg;
+      }
+    }
+
+    // 路径 3：上面都没成（整篇没图可借样式，或者用户改坏了占位段）→ 整段重渲染
+    if (!updatedImg) {
       try {
         const r = await api('/api/restyle', {
           method: 'POST',
           body: { bodyRaw: currentArticle.bodyRaw, imgUrlMap: currentArticle.imgUrlMap, theme: activeTheme },
         });
         bodyEl.innerHTML = r.html;
-        currentArticle.html = r.html;
         userEdited.body = false;
+        bodyEl.querySelectorAll('img').forEach(img => {
+          if (img.getAttribute('src') === url) updatedImg = img;
+        });
       } catch (e) {
         toast('切换配图失败: ' + e.message);
         return;
       }
-    } else {
-      currentArticle.html = bodyEl.innerHTML;
     }
+    currentArticle.html = bodyEl.innerHTML;
   }
+
+  // 滚到刚换的图，并闪一下，便于一眼确认效果
+  if (updatedImg) {
+    try { updatedImg.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch {}
+    updatedImg.classList.add('img-flash');
+    setTimeout(() => updatedImg.classList.remove('img-flash'), 900);
+  }
+
   // 更新激活态
   const slotEl = document.querySelector(`.img-slot[data-tag="${cssEscape(tag)}"]`);
   if (slotEl) {
@@ -732,6 +764,19 @@ async function selectImgCandidate(tag, url) {
       el.classList.toggle('active', el.dataset.url === url);
     });
   }
+}
+
+// 占位 <p> 形如：<p style="...placeholderStyle..."> 📷 配图加载中… <span style="opacity:.6;">TAG</span></p>
+function findPlaceholderParagraph(bodyEl, tag) {
+  const target = String(tag || '').trim();
+  if (!target) return null;
+  const ps = bodyEl.querySelectorAll('p');
+  for (const p of ps) {
+    if (!/配图加载中/.test(p.textContent)) continue;
+    const span = p.querySelector('span');
+    if (span && span.textContent.trim() === target) return p;
+  }
+  return null;
 }
 
 function cssEscape(s) {
