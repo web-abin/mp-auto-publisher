@@ -227,10 +227,14 @@ app.post('/api/restyle', (req, res) => {
 
 app.post('/api/generate', (req, res) => {
   const {
-    keyword, extra = '', theme = themes.DEFAULT_THEME, webSearch = false,
+    keyword = '', extra = '', theme = themes.DEFAULT_THEME, webSearch = false,
     useNews = false, newsCategory = '', writerId = writers.DEFAULT_ID,
+    referenceLinks = [],
   } = req.body || {};
-  if (!keyword) return res.status(400).json({ error: 'keyword required' });
+  const refs = Array.isArray(referenceLinks)
+    ? referenceLinks.map(s => String(s || '').trim()).filter(s => /^https?:\/\//i.test(s))
+    : [];
+  if (!keyword && !refs.length) return res.status(400).json({ error: 'keyword 或参考链接至少要填一个' });
   const id = newTask();
   res.json({ taskId: id });
   (async () => {
@@ -240,6 +244,7 @@ app.post('/api/generate', (req, res) => {
       const result = await pipeline.generateContent({
         keyword, extra, themeName: theme, webSearch: !!webSearch,
         useNews: !!useNews, newsCategory,
+        referenceLinks: refs,
         writerPrompt: writer ? writer.prompt : '',
         writerName: writer ? writer.name : '',
         log: (m) => appendLog(id, m),

@@ -361,8 +361,10 @@ $('#p_body').addEventListener('input', () => { userEdited.body = true; });
 
 $('#genBtn').addEventListener('click', async () => {
   const keyword = $('#g_keyword').value.trim();
-  if (!keyword) return toast('请输入关键词');
-  pushKwHistory(keyword);
+  const refLinksRaw = ($('#g_refLinks')?.value || '').split(/[\n\r\s]+/);
+  const referenceLinks = [...new Set(refLinksRaw.map(s => s.trim()).filter(s => /^https?:\/\//i.test(s)))];
+  if (!keyword && !referenceLinks.length) return toast('请输入关键词或至少一个参考链接');
+  if (keyword) pushKwHistory(keyword);
   const extra = $('#g_extra').value.trim();
   $('#genBtn').disabled = true;
   $('#genBtn').innerHTML = '<span class="spinner"></span>生成中';
@@ -378,7 +380,7 @@ $('#genBtn').addEventListener('click', async () => {
     const useNews = $('#g_useNews').checked;
     const newsCategory = useNews ? $('#g_newsCategory').value : '';
     const writerId = $('#g_writerId').value || defaultWriterId;
-    const { taskId } = await api('/api/generate', { method: 'POST', body: { keyword, extra, theme: activeTheme, webSearch, useNews, newsCategory, writerId } });
+    const { taskId } = await api('/api/generate', { method: 'POST', body: { keyword, extra, theme: activeTheme, webSearch, useNews, newsCategory, writerId, referenceLinks } });
     pollGenerateTask(taskId);
   } catch (e) {
     toast(e.message);
