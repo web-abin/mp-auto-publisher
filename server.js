@@ -98,13 +98,15 @@ app.get('/api/status', async (req, res) => {
     }
   }
   const cfg = store.getConfig();
+  const accounts = cfg.accounts || [];
   res.json({
     publicIp,
     localIps,
     hostname: os.hostname(),
     platform: `${os.platform()} ${os.arch()}`,
     nodeVersion: process.version,
-    appidConfigured: !!cfg.appid,
+    accountCount: accounts.length,
+    appidConfigured: accounts.length > 0,
     aiConfigured: !!cfg.aiKey,
     imageProvider: cfg.imageProvider,
     imageSources: (() => {
@@ -128,7 +130,9 @@ app.get('/api/config', (req, res) => {
   const imageKeys = cfg.imageKeys || {};
   res.json({
     ...cfg,
-    secret: maskKey(cfg.secret),
+    accounts: (cfg.accounts || []).map(a => ({
+      id: a.id, name: a.name, appid: a.appid, secret: maskKey(a.secret),
+    })),
     aiKey: maskKey(cfg.aiKey),
     imageKey: maskKey(cfg.imageKey),
     imageKeys: {
@@ -146,6 +150,7 @@ app.post('/api/config', (req, res) => {
   for (const k of Object.keys(incoming)) {
     let v = incoming[k];
     if (v === null || v === undefined) continue;
+    if (k === 'accounts') continue; // 账号通过 /api/accounts 单独管理
     if (k === 'imageKeys' && v && typeof v === 'object') {
       const oldMap = merged.imageKeys || {};
       const next = { ...oldMap };
@@ -169,6 +174,61 @@ app.post('/api/config', (req, res) => {
   }
   store.setConfig(merged);
   res.json({ ok: true });
+});
+
+// === 多公众号 CRUD ===
+function publicAccount(a) {
+  return { id: a.id, name: a.name, appid: a.appid, secret: maskKey(a.secret) };
+}
+
+app.get('/api/accounts', (req, res) => {
+  const cfg = store.getConfig();
+  res.json({
+    accounts: (cfg.accounts || []).map(publicAccount),
+    defaultAccountId: cfg.defaultAccountId || '',
+  });
+});
+
+app.post('/api/accounts', (req, res) => {
+  const { id, name, appid, secret } = req.body || {};
+  try {
+    // 编辑场景：若 secret 是掩码或留空，按"不修改"处理
+    const payload = { id, name, appid };
+    if (secret && !String(secret).startsWith('***')) payload.secret = secret;
+    const saved = store.upsertAccount(payload);
+    res.json(publicAccount(saved));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete('/api/accounts/:id', (req, res) => {
+  const ok = store.deleteAccount(req.params.id);
+  if (!ok) return res.status(404).json({ error: 'not found' });
+  // 同步把以该账号为目标的定时任务停掉并清掉 accountId（保留任务体，提示用户重新选）
+  const jobs = store.getJobs();
+  let dirty = false;
+  for (const j of jobs) {
+    if (j.accountId === req.params.id) {
+      j.accountId = '';
+      j.enabled = false;
+      dirty = true;
+      const t = scheduledTasks.get(j.id);
+      if (t) { t.stop(); scheduledTasks.delete(j.id); }
+    }
+  }
+  if (dirty) store.setJobs(jobs);
+  res.json({ ok: true });
+});
+
+app.post('/api/accounts/default', (req, res) => {
+  const { id } = req.body || {};
+  try {
+    const next = store.setDefaultAccount(id);
+    res.json({ defaultAccountId: next });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 app.post('/api/trends', async (req, res) => {
@@ -261,7 +321,7 @@ app.post('/api/generate', (req, res) => {
 });
 
 app.post('/api/push-draft', (req, res) => {
-  const { title, digest = '', html, coverUrl = '', keyword = '' } = req.body || {};
+  const { accountId = '', title, digest = '', html, coverUrl = '', keyword = '' } = req.body || {};
   if (!title || !html) {
     return res.status(400).json({ error: 'title / html 必填' });
   }
@@ -271,7 +331,7 @@ app.post('/api/push-draft', (req, res) => {
     const t = taskLogs.get(id);
     try {
       const result = await pipeline.pushDraftFromContent({
-        title, digest, html, coverUrl, keyword,
+        accountId, title, digest, html, coverUrl, keyword,
         log: (m) => appendLog(id, m),
       });
       t.result = result; t.done = true;
@@ -293,16 +353,20 @@ app.get('/api/jobs', (req, res) => res.json(store.getJobs()));
 
 app.post('/api/jobs', (req, res) => {
   const {
+    accountId = '',
     keyword, cron: cronExpr, extra = '', enabled = true,
     theme = themes.DEFAULT_THEME, webSearch = false,
     useNews = false, newsCategory = '', writerId = writers.DEFAULT_ID,
   } = req.body || {};
   if (!keyword || !cronExpr) return res.status(400).json({ error: 'keyword 和 cron 必填' });
   if (!cron.validate(cronExpr)) return res.status(400).json({ error: 'cron 表达式不合法' });
+  const account = store.resolveAccount(accountId);
+  if (!account) return res.status(400).json({ error: '请先在「配置」页添加至少一个公众号' });
   const jobs = store.getJobs();
   const id = crypto.randomBytes(6).toString('hex');
   const job = {
-    id, keyword, cron: cronExpr, extra, enabled,
+    id, accountId: account.id,
+    keyword, cron: cronExpr, extra, enabled,
     theme, webSearch: !!webSearch,
     useNews: !!useNews, newsCategory: newsCategory || '',
     writerId: writerId || writers.DEFAULT_ID,
@@ -348,6 +412,7 @@ app.post('/api/jobs/:id/run', (req, res) => {
       appendLog(id, `手动触发任务 ${job.keyword}${job.webSearch ? '（联网搜索）' : ''}${job.useNews ? '（抓新闻）' : ''}`);
       const w = writers.getWriter(job.writerId) || writers.getWriter(writers.DEFAULT_ID);
       const result = await pipeline.runFullPipeline({
+        accountId: job.accountId || '',
         keyword: job.keyword, extra: job.extra, pushDraft: true,
         themeName: job.theme || themes.DEFAULT_THEME,
         webSearch: !!job.webSearch,
@@ -379,6 +444,7 @@ function scheduleJob(job) {
       console.log(`[CRON] 执行任务 ${job.keyword}${job.webSearch ? '（联网搜索）' : ''}${job.useNews ? '（抓新闻）' : ''}`);
       const w = writers.getWriter(job.writerId) || writers.getWriter(writers.DEFAULT_ID);
       const result = await pipeline.runFullPipeline({
+        accountId: job.accountId || '',
         keyword: job.keyword, extra: job.extra, pushDraft: true,
         themeName: job.theme || themes.DEFAULT_THEME,
         webSearch: !!job.webSearch,

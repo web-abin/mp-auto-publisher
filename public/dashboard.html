@@ -26,7 +26,7 @@
     </div>
     <div class="card">
       <h3>配置状态</h3>
-      <div class="kv"><span class="k">公众号 APPID</span><span class="v" id="cfgAppid">--</span></div>
+      <div class="kv"><span class="k">已配置公众号</span><span class="v" id="cfgAppid">--</span></div>
       <div class="kv"><span class="k">AI 接口</span><span class="v" id="cfgAi">--</span></div>
       <div class="kv"><span class="k">图库</span><span class="v" id="cfgImg">--</span></div>
       <div class="kv"><span class="k">定时任务</span><span class="v" id="cfgJobs">--</span></div>
@@ -44,9 +44,12 @@
       </p>
     </div>
     <div class="card">
-      <h3>微信公众号</h3>
-      <div class="form-item"><label>APPID</label><input id="c_appid" placeholder="wx开头的应用 ID"/></div>
-      <div class="form-item"><label>AppSecret</label><input id="c_secret" type="password" placeholder="留空表示不修改"/></div>
+      <h3>微信公众号 <span class="hint-inline">（可配置多个，发文时选择推送目标）</span></h3>
+      <p class="hint" style="font-size:12px;color:#999;margin:0 0 10px;line-height:1.6;">
+        每个公众号一份 APPID + AppSecret。默认账号用于「生成/手写/定时」未指定目标时的兜底。删除账号会同时停用对应的定时任务。
+      </p>
+      <div id="accountList"></div>
+      <button class="btn ghost block" id="addAccountBtn" style="margin-top:10px;">+ 新增公众号</button>
     </div>
     <div class="card">
       <h3>AI 文章生成</h3>
@@ -94,6 +97,10 @@
   <div class="page" data-page="gen">
     <div class="card">
       <h3>关键词 → 一键发文</h3>
+      <div class="form-item">
+        <label>推送到公众号</label>
+        <select id="g_accountId"></select>
+      </div>
       <div class="form-item">
         <label>写手（文章风格）</label>
         <select id="g_writerId"></select>
@@ -180,6 +187,10 @@
     <div class="card">
       <h3>手动撰写文章 <span class="hint-inline">（直接输入内容 → 选主题 → 推送草稿）</span></h3>
       <div class="form-item">
+        <label>推送到公众号</label>
+        <select id="m_accountId"></select>
+      </div>
+      <div class="form-item">
         <label>标题（≤64 字）</label>
         <input id="m_title" maxlength="64" placeholder="文章标题"/>
       </div>
@@ -221,6 +232,10 @@
   <div class="page" data-page="cron">
     <div class="card">
       <h3>新增定时任务 <span class="hint-inline">（到点自动生成 + 配图 + 推送公众号草稿箱）</span></h3>
+      <div class="form-item">
+        <label>推送到公众号</label>
+        <select id="j_accountId"></select>
+      </div>
       <div class="form-item">
         <label>写手（文章风格）</label>
         <select id="j_writerId"></select>

@@ -52,8 +52,8 @@ async function loadStatus() {
     $('#ipBadge').textContent = s.publicIp ? '在线' : '离线';
     $('#ipBadge').style.background = s.publicIp ? '#07c160' : '#aaa';
 
-    $('#cfgAppid').textContent = s.appidConfigured ? '已配置 ✓' : '未配置';
-    $('#cfgAppid').className = 'v ' + (s.appidConfigured ? 'ok' : 'warn');
+    $('#cfgAppid').textContent = s.accountCount ? `${s.accountCount} 个 ✓` : '未配置';
+    $('#cfgAppid').className = 'v ' + (s.accountCount ? 'ok' : 'warn');
     $('#cfgAi').textContent = s.aiConfigured ? '已配置 ✓' : '未配置';
     $('#cfgAi').className = 'v ' + (s.aiConfigured ? 'ok' : 'warn');
     $('#cfgImg').textContent = (s.imageSources && s.imageSources.length)
@@ -81,10 +81,9 @@ async function loadConfigIp() {
 
 async function loadConfig() {
   loadConfigIp();
+  loadAccounts();
   try {
     const c = await api('/api/config');
-    $('#c_appid').value = c.appid || '';
-    $('#c_secret').placeholder = c.secret ? `当前: ${c.secret}（留空不修改）` : '请输入 AppSecret';
     $('#c_aiProvider').value = c.aiProvider || 'anthropic';
     $('#c_aiKey').placeholder = c.aiKey ? `当前: ${c.aiKey}（留空不修改）` : '请输入 API Key';
     $('#c_aiModel').value = c.aiModel || '';
@@ -104,8 +103,6 @@ async function loadConfig() {
 $('#c_refreshIp').addEventListener('click', loadConfigIp);
 $('#saveCfg').addEventListener('click', async () => {
   const body = {
-    appid: $('#c_appid').value.trim(),
-    secret: $('#c_secret').value,
     aiProvider: $('#c_aiProvider').value,
     aiKey: $('#c_aiKey').value,
     aiModel: $('#c_aiModel').value.trim(),
@@ -121,7 +118,7 @@ $('#saveCfg').addEventListener('click', async () => {
     $('#saveCfg').disabled = true;
     await api('/api/config', { method: 'POST', body });
     toast('已保存');
-    $('#c_secret').value = ''; $('#c_aiKey').value = '';
+    $('#c_aiKey').value = '';
     $('#c_imageKey_pexels').value = '';
     $('#c_imageKey_pixabay').value = '';
     $('#c_imageKey_unsplash').value = '';
@@ -129,6 +126,118 @@ $('#saveCfg').addEventListener('click', async () => {
   } catch (e) { toast(e.message); }
   finally { $('#saveCfg').disabled = false; }
 });
+
+// === 公众号账号管理 ===
+let availableAccounts = [];
+let defaultAccountId = '';
+const accountSelectIds = ['#g_accountId', '#m_accountId', '#j_accountId'];
+
+async function loadAccounts() {
+  try {
+    const r = await api('/api/accounts');
+    availableAccounts = r.accounts || [];
+    defaultAccountId = r.defaultAccountId || (availableAccounts[0] && availableAccounts[0].id) || '';
+    renderAccountList();
+    renderAccountSelects();
+  } catch (e) { toast(e.message); }
+}
+
+function renderAccountList() {
+  const box = $('#accountList');
+  if (!box) return;
+  if (!availableAccounts.length) {
+    box.innerHTML = '<div class="empty">还没添加公众号，点下方按钮新增</div>';
+    return;
+  }
+  box.innerHTML = availableAccounts.map((a, i) => `
+    <div class="account-item" data-id="${escapeHtml(a.id)}" data-idx="${i}">
+      <div class="acc-head">
+        <input class="a-name" placeholder="公众号名称（如：养老健康号）" value="${escapeHtml(a.name || '')}"/>
+        ${a.id === defaultAccountId ? '<span class="builtin-badge">默认</span>' : `<button class="ghost-btn" data-act="setDefault">设为默认</button>`}
+        <button class="del-btn" data-act="del">删除</button>
+      </div>
+      <div class="acc-row">
+        <label>APPID</label>
+        <input class="a-appid" placeholder="wx开头的应用 ID" value="${escapeHtml(a.appid || '')}"/>
+      </div>
+      <div class="acc-row">
+        <label>AppSecret</label>
+        <input class="a-secret" type="password" placeholder="${a.secret ? `当前: ${a.secret}（留空不修改）` : '请输入 AppSecret'}"/>
+      </div>
+      <button class="btn small" data-act="save">保存此公众号</button>
+    </div>
+  `).join('');
+  box.querySelectorAll('.account-item').forEach(el => {
+    const id = el.dataset.id;
+    el.querySelector('[data-act=save]').onclick = () => saveAccount(id, el);
+    el.querySelector('[data-act=del]').onclick = () => deleteAccount(id);
+    const setDefBtn = el.querySelector('[data-act=setDefault]');
+    if (setDefBtn) setDefBtn.onclick = () => setDefaultAccount(id);
+  });
+}
+
+function renderAccountSelects() {
+  for (const sid of accountSelectIds) {
+    const sel = $(sid);
+    if (!sel) continue;
+    const prev = sel.value;
+    if (!availableAccounts.length) {
+      sel.innerHTML = '<option value="">（请先到「配置」添加公众号）</option>';
+      continue;
+    }
+    sel.innerHTML = availableAccounts.map(a =>
+      `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}${a.id === defaultAccountId ? '（默认）' : ''}</option>`
+    ).join('');
+    if (prev && availableAccounts.some(a => a.id === prev)) sel.value = prev;
+    else sel.value = defaultAccountId;
+  }
+}
+
+async function saveAccount(id, el) {
+  const name = el.querySelector('.a-name').value.trim();
+  const appid = el.querySelector('.a-appid').value.trim();
+  const secret = el.querySelector('.a-secret').value;
+  if (!name || !appid) return toast('公众号名称和 APPID 必填');
+  try {
+    await api('/api/accounts', { method: 'POST', body: { id, name, appid, secret } });
+    toast('已保存');
+    loadAccounts();
+  } catch (e) { toast(e.message); }
+}
+
+$('#addAccountBtn')?.addEventListener('click', async () => {
+  const name = prompt('请输入新公众号名称（如：养老健康号）');
+  if (!name || !name.trim()) return;
+  const appid = prompt('请输入 APPID（wx 开头）');
+  if (!appid || !appid.trim()) return;
+  const secret = prompt('请输入 AppSecret');
+  if (!secret || !secret.trim()) return;
+  try {
+    await api('/api/accounts', { method: 'POST', body: { name: name.trim(), appid: appid.trim(), secret: secret.trim() } });
+    toast('已添加');
+    loadAccounts();
+  } catch (e) { toast(e.message); }
+});
+
+async function deleteAccount(id) {
+  const a = availableAccounts.find(x => x.id === id);
+  if (!confirm(`确定删除公众号「${a ? a.name : id}」？\n关联的定时任务会被一并停用。`)) return;
+  try {
+    await api(`/api/accounts/${id}`, { method: 'DELETE' });
+    toast('已删除');
+    loadAccounts();
+    loadJobs();
+  } catch (e) { toast(e.message); }
+}
+
+async function setDefaultAccount(id) {
+  try {
+    await api('/api/accounts/default', { method: 'POST', body: { id } });
+    loadAccounts();
+  } catch (e) { toast(e.message); }
+}
+
+loadAccounts();
 
 // === 生成 ===
 $('#mineBtn').addEventListener('click', async () => {
@@ -457,6 +566,9 @@ $('#pushDraftBtn').addEventListener('click', async () => {
   if (!title) return toast('标题不能为空');
   if (!html) return toast('正文不能为空');
 
+  const accountId = $('#g_accountId').value || defaultAccountId;
+  if (!accountId) return toast('请先到「配置」页添加公众号');
+
   $('#pushDraftBtn').disabled = true;
   $('#pushDraftBtn').innerHTML = '<span class="spinner"></span>推送中';
   $('#pushResultBox').innerHTML = '';
@@ -465,7 +577,7 @@ $('#pushDraftBtn').addEventListener('click', async () => {
   try {
     const { taskId } = await api('/api/push-draft', {
       method: 'POST',
-      body: { title, digest, html, coverUrl, keyword: currentArticle.keyword || '' },
+      body: { accountId, title, digest, html, coverUrl, keyword: currentArticle.keyword || '' },
     });
     pollPushTask(taskId);
   } catch (e) {
@@ -531,10 +643,12 @@ $('#addJob').addEventListener('click', async () => {
   const newsCategory = useNews ? $('#j_newsCategory').value : '';
   const theme = jobActiveTheme || activeTheme;
   if (!keyword || !cronExpr) return toast('关键词和 cron 都要填');
+  const accountId = $('#j_accountId').value || defaultAccountId;
+  if (!accountId) return toast('请先到「配置」页添加公众号');
   try {
     $('#addJob').disabled = true;
     const writerId = $('#j_writerId').value || defaultWriterId;
-    await api('/api/jobs', { method: 'POST', body: { keyword, cron: cronExpr, extra, theme, webSearch, useNews, newsCategory, writerId } });
+    await api('/api/jobs', { method: 'POST', body: { accountId, keyword, cron: cronExpr, extra, theme, webSearch, useNews, newsCategory, writerId } });
     toast('已添加');
     $('#j_keyword').value = ''; $('#j_extra').value = ''; $('#j_cron').value = '';
     $('#j_webSearch').checked = false;
@@ -559,11 +673,15 @@ async function loadJobs() {
       const w = availableWriters.find(x => x.id === id);
       return w ? w.name : (id || 'AI公众号写手');
     };
+    const accountLabel = (id) => {
+      const a = availableAccounts.find(x => x.id === id);
+      return a ? a.name : (id ? '（已删除）' : '（未指定）');
+    };
     box.innerHTML = list.map(j => `<div class="job-item" data-id="${j.id}">
       <div class="row">
         <div>
           <div class="kw">${escapeHtml(j.keyword)}</div>
-          <div class="meta">cron: <code>${escapeHtml(j.cron)}</code> · ${j.enabled ? '✅ 启用' : '⏸ 已停'} · 写手: ${escapeHtml(writerLabel(j.writerId))} · 主题: ${escapeHtml(themeLabel(j.theme))} · 联网: ${j.webSearch ? '✅' : '✕'} · 抓新闻: ${j.useNews ? (j.newsCategory ? `✅(${escapeHtml(j.newsCategory)})` : '✅(关键词)') : '✕'}</div>
+          <div class="meta">📤 ${escapeHtml(accountLabel(j.accountId))} · cron: <code>${escapeHtml(j.cron)}</code> · ${j.enabled ? '✅ 启用' : '⏸ 已停'} · 写手: ${escapeHtml(writerLabel(j.writerId))} · 主题: ${escapeHtml(themeLabel(j.theme))} · 联网: ${j.webSearch ? '✅' : '✕'} · 抓新闻: ${j.useNews ? (j.newsCategory ? `✅(${escapeHtml(j.newsCategory)})` : '✅(关键词)') : '✕'}</div>
           <div class="meta">最近: ${j.lastRun ? new Date(j.lastRun).toLocaleString() + ' — ' + escapeHtml(j.lastResult || '') : '从未执行'}</div>
         </div>
       </div>
@@ -598,7 +716,7 @@ async function loadHistory() {
     if (!list.length) { box.innerHTML = '<div class="empty">暂无发布记录</div>'; return; }
     box.innerHTML = list.map(h => `<div class="history-item">
       <div class="ht">${escapeHtml(h.title || '(无标题)')}</div>
-      <div class="hm">关键词: ${escapeHtml(h.keyword || '')} · ${new Date(h.ts).toLocaleString()}${h.draftId ? ' · 草稿 ✓' : ''}</div>
+      <div class="hm">${h.accountName ? '📤 ' + escapeHtml(h.accountName) + ' · ' : ''}关键词: ${escapeHtml(h.keyword || '')} · ${new Date(h.ts).toLocaleString()}${h.draftId ? ' · 草稿 ✓' : ''}</div>
     </div>`).join('');
   } catch (e) { toast(e.message); }
 }
@@ -670,6 +788,9 @@ $('#m_pushDraftBtn').addEventListener('click', async () => {
   const html = $('#m_previewBody').innerHTML.trim();
   if (!html) return toast('正文渲染失败，请检查内容');
 
+  const accountId = $('#m_accountId').value || defaultAccountId;
+  if (!accountId) return toast('请先到「配置」页添加公众号');
+
   $('#m_pushDraftBtn').disabled = true;
   $('#m_pushDraftBtn').innerHTML = '<span class="spinner"></span>推送中';
   $('#m_pushResultBox').innerHTML = '';
@@ -678,7 +799,7 @@ $('#m_pushDraftBtn').addEventListener('click', async () => {
   try {
     const { taskId } = await api('/api/push-draft', {
       method: 'POST',
-      body: { title, digest, html, coverUrl, keyword: '(手写)' },
+      body: { accountId, title, digest, html, coverUrl, keyword: '(手写)' },
     });
     pollManualPushTask(taskId);
   } catch (e) {
