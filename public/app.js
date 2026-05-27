@@ -647,18 +647,9 @@ function renderImgPicker(r) {
     if (tag === '__cover') return ($('#p_coverUrl').value || '').trim();
     return (currentArticle && currentArticle.imgUrlMap && currentArticle.imgUrlMap[tag]) || '';
   };
-  // AI 默认挑的图：第一次渲染时记录下来，用于打 ⭐
-  if (!currentArticle.__aiPicks) {
-    currentArticle.__aiPicks = {};
-    for (const [tag, cands] of Object.entries(map)) {
-      const url = tag === '__cover' ? (r.coverUrl || '') : (r.imgUrlMap && r.imgUrlMap[tag]) || '';
-      if (url) currentArticle.__aiPicks[tag] = url;
-    }
-  }
 
   list.innerHTML = slots.map(s => {
     const cur = currentUrlFor(s.tag);
-    const aiPick = currentArticle.__aiPicks[s.tag] || '';
     return `
       <div class="img-slot" data-tag="${escapeHtml(s.tag)}">
         <div class="slot-head">${escapeHtml(s.label)}</div>
@@ -670,7 +661,7 @@ function renderImgPicker(r) {
                  data-tag="${escapeHtml(s.tag)}"
                  title="${escapeHtml(c.url)}">
               <img src="${escapeHtml(c.url)}" alt="" loading="lazy"/>
-              <span class="thumb-meta">${escapeHtml(sourceLabel(c.source))}${c.url === aiPick ? ' ⭐' : ''}</span>
+              <span class="thumb-meta">${escapeHtml(sourceLabel(c.source))}</span>
             </div>
           `).join('')}
         </div>

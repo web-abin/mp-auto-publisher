@@ -159,6 +159,7 @@ app.post('/api/config', (req, res) => {
         if (typeof pv !== 'string') continue;
         if (pv.startsWith('***')) continue;
         pv = pv.trim();
+        if (!pv) continue; // 留空表示"不修改"——和顶层 key 保持一致，避免一次保存把其它图源 key 清掉
         next[p] = pv;
       }
       merged.imageKeys = next;
