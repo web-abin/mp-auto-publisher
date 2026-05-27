@@ -683,7 +683,7 @@ function renderImgPicker(r) {
   });
 }
 
-function selectImgCandidate(tag, url) {
+async function selectImgCandidate(tag, url) {
   if (!currentArticle || !url) return;
   if (tag === '__cover') {
     $('#p_coverUrl').value = url;
@@ -695,18 +695,35 @@ function selectImgCandidate(tag, url) {
     const prev = currentArticle.imgUrlMap && currentArticle.imgUrlMap[tag];
     if (!currentArticle.imgUrlMap) currentArticle.imgUrlMap = {};
     currentArticle.imgUrlMap[tag] = url;
-    // 替换正文里对应的 img src，保留用户已做的文字编辑
+    // 优先做 img src 原地替换（保留用户已做的文字编辑）；
+    // 如果该 slot 当前是「配图加载中…」占位符（AI 之前拒图 / 用户编辑过正文），
+    // 占位符是 <p> 而不是 <img>，src 替换匹配不到——这种情况回退到整段重渲染。
     const bodyEl = $('#p_body');
+    let replaced = false;
     if (prev) {
       bodyEl.querySelectorAll('img').forEach(img => {
-        if (img.getAttribute('src') === prev) img.setAttribute('src', url);
-      });
-    } else {
-      bodyEl.querySelectorAll('img').forEach(img => {
-        if (!img.getAttribute('src')) img.setAttribute('src', url);
+        if (img.getAttribute('src') === prev) {
+          img.setAttribute('src', url);
+          replaced = true;
+        }
       });
     }
-    currentArticle.html = bodyEl.innerHTML;
+    if (!replaced) {
+      try {
+        const r = await api('/api/restyle', {
+          method: 'POST',
+          body: { bodyRaw: currentArticle.bodyRaw, imgUrlMap: currentArticle.imgUrlMap, theme: activeTheme },
+        });
+        bodyEl.innerHTML = r.html;
+        currentArticle.html = r.html;
+        userEdited.body = false;
+      } catch (e) {
+        toast('切换配图失败: ' + e.message);
+        return;
+      }
+    } else {
+      currentArticle.html = bodyEl.innerHTML;
+    }
   }
   // 更新激活态
   const slotEl = document.querySelector(`.img-slot[data-tag="${cssEscape(tag)}"]`);
