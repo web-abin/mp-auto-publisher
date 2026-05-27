@@ -130,16 +130,61 @@ $('#saveCfg').addEventListener('click', async () => {
 // === 公众号账号管理 ===
 let availableAccounts = [];
 let defaultAccountId = '';
+const editingAccounts = new Set(); // 处于编辑态的账号 id（含临时 id new_xxx）
 const accountSelectIds = ['#g_accountId', '#m_accountId', '#j_accountId'];
 
 async function loadAccounts() {
   try {
     const r = await api('/api/accounts');
-    availableAccounts = r.accounts || [];
-    defaultAccountId = r.defaultAccountId || (availableAccounts[0] && availableAccounts[0].id) || '';
+    const serverAccounts = r.accounts || [];
+    // 保留本地未保存的新增项（id 以 new_ 开头）
+    const localPending = availableAccounts.filter(a => String(a.id).startsWith('new_'));
+    availableAccounts = [...serverAccounts, ...localPending];
+    defaultAccountId = r.defaultAccountId || (serverAccounts[0] && serverAccounts[0].id) || '';
     renderAccountList();
     renderAccountSelects();
   } catch (e) { toast(e.message); }
+}
+
+function renderAccountItemView(a) {
+  const isDefault = a.id === defaultAccountId;
+  return `
+    <div class="account-item view" data-id="${escapeHtml(a.id)}">
+      <div class="acc-view-head">
+        <div class="acc-name">${escapeHtml(a.name)}${isDefault ? ' <span class="builtin-badge">默认</span>' : ''}</div>
+        <div class="acc-view-actions">
+          ${isDefault ? '' : '<button class="ghost-btn" data-act="setDefault">设为默认</button>'}
+          <button class="ghost-btn" data-act="edit">编辑</button>
+          <button class="del-btn" data-act="del">删除</button>
+        </div>
+      </div>
+      <div class="acc-view-row"><span class="k">APPID</span><span class="v">${escapeHtml(a.appid || '')}</span></div>
+      <div class="acc-view-row"><span class="k">AppSecret</span><span class="v">${escapeHtml(a.secret || '未设置')}</span></div>
+    </div>
+  `;
+}
+
+function renderAccountItemEdit(a) {
+  const isNew = String(a.id).startsWith('new_');
+  return `
+    <div class="account-item editing" data-id="${escapeHtml(a.id)}">
+      <div class="acc-head">
+        <input class="a-name" placeholder="公众号名称（如：养老健康号）" value="${escapeHtml(a.name || '')}"/>
+      </div>
+      <div class="acc-row">
+        <label>APPID</label>
+        <input class="a-appid" placeholder="wx开头的应用 ID" value="${escapeHtml(a.appid || '')}"/>
+      </div>
+      <div class="acc-row">
+        <label>AppSecret</label>
+        <input class="a-secret" type="password" placeholder="${isNew ? '请输入 AppSecret' : (a.secret ? `当前: ${a.secret}（留空不修改）` : '请输入 AppSecret')}"/>
+      </div>
+      <div class="acc-edit-actions">
+        <button class="btn ghost small" data-act="cancel">取消</button>
+        <button class="btn small" data-act="save">保存</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderAccountList() {
@@ -149,48 +194,50 @@ function renderAccountList() {
     box.innerHTML = '<div class="empty">还没添加公众号，点下方按钮新增</div>';
     return;
   }
-  box.innerHTML = availableAccounts.map((a, i) => `
-    <div class="account-item" data-id="${escapeHtml(a.id)}" data-idx="${i}">
-      <div class="acc-head">
-        <input class="a-name" placeholder="公众号名称（如：养老健康号）" value="${escapeHtml(a.name || '')}"/>
-        ${a.id === defaultAccountId ? '<span class="builtin-badge">默认</span>' : `<button class="ghost-btn" data-act="setDefault">设为默认</button>`}
-        <button class="del-btn" data-act="del">删除</button>
-      </div>
-      <div class="acc-row">
-        <label>APPID</label>
-        <input class="a-appid" placeholder="wx开头的应用 ID" value="${escapeHtml(a.appid || '')}"/>
-      </div>
-      <div class="acc-row">
-        <label>AppSecret</label>
-        <input class="a-secret" type="password" placeholder="${a.secret ? `当前: ${a.secret}（留空不修改）` : '请输入 AppSecret'}"/>
-      </div>
-      <button class="btn small" data-act="save">保存此公众号</button>
-    </div>
-  `).join('');
+  box.innerHTML = availableAccounts
+    .map(a => editingAccounts.has(a.id) ? renderAccountItemEdit(a) : renderAccountItemView(a))
+    .join('');
   box.querySelectorAll('.account-item').forEach(el => {
     const id = el.dataset.id;
-    el.querySelector('[data-act=save]').onclick = () => saveAccount(id, el);
-    el.querySelector('[data-act=del]').onclick = () => deleteAccount(id);
-    const setDefBtn = el.querySelector('[data-act=setDefault]');
-    if (setDefBtn) setDefBtn.onclick = () => setDefaultAccount(id);
+    const get = (act) => el.querySelector(`[data-act=${act}]`);
+    get('save')?.addEventListener('click', () => saveAccount(id, el));
+    get('cancel')?.addEventListener('click', () => cancelEditAccount(id));
+    get('edit')?.addEventListener('click', () => startEditAccount(id));
+    get('del')?.addEventListener('click', () => deleteAccount(id));
+    get('setDefault')?.addEventListener('click', () => setDefaultAccount(id));
   });
 }
 
 function renderAccountSelects() {
+  const persisted = availableAccounts.filter(a => !String(a.id).startsWith('new_'));
   for (const sid of accountSelectIds) {
     const sel = $(sid);
     if (!sel) continue;
     const prev = sel.value;
-    if (!availableAccounts.length) {
+    if (!persisted.length) {
       sel.innerHTML = '<option value="">（请先到「配置」添加公众号）</option>';
       continue;
     }
-    sel.innerHTML = availableAccounts.map(a =>
+    sel.innerHTML = persisted.map(a =>
       `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}${a.id === defaultAccountId ? '（默认）' : ''}</option>`
     ).join('');
-    if (prev && availableAccounts.some(a => a.id === prev)) sel.value = prev;
+    if (prev && persisted.some(a => a.id === prev)) sel.value = prev;
     else sel.value = defaultAccountId;
   }
+}
+
+function startEditAccount(id) {
+  editingAccounts.add(id);
+  renderAccountList();
+}
+
+function cancelEditAccount(id) {
+  editingAccounts.delete(id);
+  // 临时新增项取消 → 从列表移除
+  if (String(id).startsWith('new_')) {
+    availableAccounts = availableAccounts.filter(a => a.id !== id);
+  }
+  renderAccountList();
 }
 
 async function saveAccount(id, el) {
@@ -198,25 +245,33 @@ async function saveAccount(id, el) {
   const appid = el.querySelector('.a-appid').value.trim();
   const secret = el.querySelector('.a-secret').value;
   if (!name || !appid) return toast('公众号名称和 APPID 必填');
+  const isNew = String(id).startsWith('new_');
+  if (isNew && !secret.trim()) return toast('新公众号必须填 AppSecret');
+  const body = { name, appid };
+  if (secret) body.secret = secret;
+  if (!isNew) body.id = id;
   try {
-    await api('/api/accounts', { method: 'POST', body: { id, name, appid, secret } });
+    await api('/api/accounts', { method: 'POST', body });
+    editingAccounts.delete(id);
+    if (isNew) availableAccounts = availableAccounts.filter(a => a.id !== id);
     toast('已保存');
     loadAccounts();
   } catch (e) { toast(e.message); }
 }
 
-$('#addAccountBtn')?.addEventListener('click', async () => {
-  const name = prompt('请输入新公众号名称（如：养老健康号）');
-  if (!name || !name.trim()) return;
-  const appid = prompt('请输入 APPID（wx 开头）');
-  if (!appid || !appid.trim()) return;
-  const secret = prompt('请输入 AppSecret');
-  if (!secret || !secret.trim()) return;
-  try {
-    await api('/api/accounts', { method: 'POST', body: { name: name.trim(), appid: appid.trim(), secret: secret.trim() } });
-    toast('已添加');
-    loadAccounts();
-  } catch (e) { toast(e.message); }
+$('#addAccountBtn')?.addEventListener('click', () => {
+  const tempId = 'new_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  availableAccounts.push({ id: tempId, name: '', appid: '', secret: '' });
+  editingAccounts.add(tempId);
+  renderAccountList();
+  // 滚到新加项并聚焦名称
+  setTimeout(() => {
+    const el = document.querySelector(`.account-item[data-id="${tempId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.querySelector('.a-name')?.focus();
+    }
+  }, 50);
 });
 
 async function deleteAccount(id) {
