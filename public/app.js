@@ -612,6 +612,48 @@ function renderEditablePreview(r) {
     : '推送到微信草稿箱';
 }
 
+async function copyRichToClipboard(el) {
+  if (!el) return false;
+  const html = el.innerHTML.trim();
+  const text = el.innerText.trim();
+  if (!html) { toast('内容为空'); return false; }
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        }),
+      ]);
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      const ok = document.execCommand('copy');
+      sel.removeAllRanges();
+      if (!ok) throw new Error('execCommand 失败');
+    }
+    return true;
+  } catch (e) {
+    toast('复制失败：' + e.message);
+    return false;
+  }
+}
+
+$('#copyBodyBtn')?.addEventListener('click', async () => {
+  if (await copyRichToClipboard($('#p_body'))) {
+    toast('已复制，可直接粘贴到公众号编辑器');
+  }
+});
+
+$('#m_copyBodyBtn')?.addEventListener('click', async () => {
+  if (await copyRichToClipboard($('#m_previewBody'))) {
+    toast('已复制，可直接粘贴到公众号编辑器');
+  }
+});
+
 $('#pushDraftBtn').addEventListener('click', async () => {
   if (!currentArticle) return toast('请先生成文章');
   const title = $('#p_title').value.trim();
