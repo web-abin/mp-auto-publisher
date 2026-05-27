@@ -606,10 +606,120 @@ function renderEditablePreview(r) {
     if (!userEdited.body) $('#p_body').innerHTML = r.html || '';
   }
 
+  renderImgPicker(r);
+
   $('#pushDraftBtn').disabled = imagesPending;
   $('#pushDraftBtn').innerHTML = imagesPending
     ? '<span class="spinner"></span>配图加载中…'
     : '推送到微信草稿箱';
+}
+
+const SOURCE_LABELS = {
+  pexels: 'Pexels',
+  pixabay: 'Pixabay',
+  unsplash: 'Unsplash',
+  baidu: '百度',
+  reference: '参考网页',
+  placeholder: '占位图',
+  other: '其它',
+};
+function sourceLabel(s) { return SOURCE_LABELS[s] || s; }
+
+function renderImgPicker(r) {
+  const box = $('#imgPickerBox');
+  const list = $('#imgPickerList');
+  const map = r && r.imgCandidatesMap;
+  if (!map || !Object.keys(map).length) { box.style.display = 'none'; return; }
+  const slots = [];
+  if (map.__cover && map.__cover.length) {
+    slots.push({ tag: '__cover', label: '🖼️ 封面', candidates: map.__cover });
+  }
+  for (const [tag, cands] of Object.entries(map)) {
+    if (tag === '__cover') continue;
+    if (!cands || !cands.length) continue;
+    const short = tag.length > 36 ? tag.slice(0, 36) + '…' : tag;
+    slots.push({ tag, label: `📷 ${short}`, candidates: cands });
+  }
+  if (!slots.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+
+  const currentUrlFor = (tag) => {
+    if (tag === '__cover') return ($('#p_coverUrl').value || '').trim();
+    return (currentArticle && currentArticle.imgUrlMap && currentArticle.imgUrlMap[tag]) || '';
+  };
+  // AI 默认挑的图：第一次渲染时记录下来，用于打 ⭐
+  if (!currentArticle.__aiPicks) {
+    currentArticle.__aiPicks = {};
+    for (const [tag, cands] of Object.entries(map)) {
+      const url = tag === '__cover' ? (r.coverUrl || '') : (r.imgUrlMap && r.imgUrlMap[tag]) || '';
+      if (url) currentArticle.__aiPicks[tag] = url;
+    }
+  }
+
+  list.innerHTML = slots.map(s => {
+    const cur = currentUrlFor(s.tag);
+    const aiPick = currentArticle.__aiPicks[s.tag] || '';
+    return `
+      <div class="img-slot" data-tag="${escapeHtml(s.tag)}">
+        <div class="slot-head">${escapeHtml(s.label)}</div>
+        <div class="slot-thumbs">
+          ${s.candidates.map(c => `
+            <div class="img-thumb ${c.url === cur ? 'active' : ''}"
+                 data-url="${escapeHtml(c.url)}"
+                 data-source="${escapeHtml(c.source)}"
+                 data-tag="${escapeHtml(s.tag)}"
+                 title="${escapeHtml(c.url)}">
+              <img src="${escapeHtml(c.url)}" alt="" loading="lazy"/>
+              <span class="thumb-meta">${escapeHtml(sourceLabel(c.source))}${c.url === aiPick ? ' ⭐' : ''}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.img-thumb').forEach(el => {
+    el.onclick = () => selectImgCandidate(el.dataset.tag, el.dataset.url);
+  });
+}
+
+function selectImgCandidate(tag, url) {
+  if (!currentArticle || !url) return;
+  if (tag === '__cover') {
+    $('#p_coverUrl').value = url;
+    $('#p_coverImg').src = url;
+    currentArticle.coverUrl = url;
+    if (currentArticle.imgUrlMap) currentArticle.imgUrlMap.__cover = url;
+    userEdited.cover = true;
+  } else {
+    const prev = currentArticle.imgUrlMap && currentArticle.imgUrlMap[tag];
+    if (!currentArticle.imgUrlMap) currentArticle.imgUrlMap = {};
+    currentArticle.imgUrlMap[tag] = url;
+    // 替换正文里对应的 img src，保留用户已做的文字编辑
+    const bodyEl = $('#p_body');
+    if (prev) {
+      bodyEl.querySelectorAll('img').forEach(img => {
+        if (img.getAttribute('src') === prev) img.setAttribute('src', url);
+      });
+    } else {
+      bodyEl.querySelectorAll('img').forEach(img => {
+        if (!img.getAttribute('src')) img.setAttribute('src', url);
+      });
+    }
+    currentArticle.html = bodyEl.innerHTML;
+  }
+  // 更新激活态
+  const slotEl = document.querySelector(`.img-slot[data-tag="${cssEscape(tag)}"]`);
+  if (slotEl) {
+    slotEl.querySelectorAll('.img-thumb').forEach(el => {
+      el.classList.toggle('active', el.dataset.url === url);
+    });
+  }
+}
+
+function cssEscape(s) {
+  if (window.CSS && CSS.escape) return CSS.escape(s);
+  return String(s).replace(/["\\]/g, '\\$&');
 }
 
 async function copyRichToClipboard(el) {
